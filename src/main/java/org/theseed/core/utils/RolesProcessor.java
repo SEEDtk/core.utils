@@ -288,7 +288,7 @@ public class RolesProcessor extends BaseProcessor {
             for (String role : finalRoles) {
                 int[] foundCounts = this.roleFoundCounts.get(role);
                 String foundList = Arrays.stream(foundCounts).mapToObj(x -> Integer.toString(x)).collect(Collectors.joining(","));
-                roleWriter.format("%s\t%d\t%s%n", role, this.roleCounts.getCount(role), foundList);
+                roleWriter.format("%s\t%d\t%s\t%s%n", role, this.roleCounts.getCount(role), foundList, this.roleMap.getName(role));
             }
             roleWriter.flush();
         }
