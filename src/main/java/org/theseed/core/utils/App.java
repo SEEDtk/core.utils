@@ -10,6 +10,7 @@ import org.theseed.utils.BaseProcessor;
  * updates		process weekly updates
  * roles		create the roles.in.subsystems file
  * tables		create the tables required to build the evaluator
+ * subList		produce a short subsystem summary report
  *
  */
 public class App
@@ -27,6 +28,9 @@ public class App
             break;
         case "roles" :
             processor = new RolesProcessor();
+            break;
+        case "subList" :
+            processor = new SubsystemListProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
