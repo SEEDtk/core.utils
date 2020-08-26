@@ -107,6 +107,10 @@ public class UpdateProcessor extends BaseProcessor {
         // STEP 6: Create the portable CoreSEED
         File coreZip = new File(this.globalDir, "corerepo.zip");
         this.execute(new SeedProcessor(), coreZip, "--win", this.coreDir);
+        // STEP 7: Update the evaluation data
+        File evalIn = new File(this.coreDir, "Eval");
+        File evalOut = new File(this.coreDir, "Eval.New");
+        this.execute(new RolesProcessor(), null, "--clear", this.coreDir, evalIn, evalOut);
         // All done.
         log.info("All done.");
     }

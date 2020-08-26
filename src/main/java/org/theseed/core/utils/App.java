@@ -7,7 +7,9 @@ import org.theseed.utils.BaseProcessor;
 /**
  * This module contains commands for maintaining CoreSEED.  The following commands are supported.
  *
- * updates		processing weekly updates
+ * updates		process weekly updates
+ * roles		create the roles.in.subsystems file
+ * tables		create the tables required to build the evaluator
  *
  */
 public class App
@@ -22,6 +24,9 @@ public class App
         switch (command) {
         case "updates" :
             processor = new UpdateProcessor();
+            break;
+        case "roles" :
+            processor = new RolesProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
