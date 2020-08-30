@@ -110,7 +110,7 @@ public class UpdateProcessor extends BaseProcessor {
         // STEP 7: Update the evaluation data
         File evalIn = new File(this.coreDir, "Eval");
         File evalOut = new File(this.coreDir, "Eval.New");
-        this.execute(new RolesProcessor(), null, "--clear", this.coreDir, evalIn, evalOut);
+        this.execute(new RolesProcessor(), null, "--clear", this.coreDir, this.outDir, evalIn, evalOut);
         // All done.
         log.info("All done.");
     }

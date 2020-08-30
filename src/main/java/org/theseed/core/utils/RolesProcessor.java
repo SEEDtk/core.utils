@@ -59,8 +59,8 @@ import org.theseed.utils.BaseProcessor;
  * If a role in the subsystems has a new name that hashes to the same checksum as an existing role, the new name
  * will override it.  This insures we have the latest role text for each role ID.
  *
- * The positional parameters are the name of the CoreSEED directory, the name of the old evaluation directory, and the
- * name of the new evaluation directory.  The command-line options are as follows.
+ * The positional parameters are the name of the CoreSEED directory, the name of the GTO directory, the name of the old
+ * evaluation directory, and the name of the new evaluation directory.  The command-line options are as follows.
  *
  * -h		display command-line usage
  * -v		display more detailed progress messages
@@ -113,7 +113,7 @@ public class RolesProcessor extends BaseProcessor {
     private int minOccur;
 
     /** maximum number of role occurrences per genome for a role to be useful */
-    @Option(name = "--maxMulti", metaVar = "5", usage = "maximum number of times a useful role can occur in a genome")
+    @Option(name = "--maxMulti", metaVar = "3", usage = "maximum number of times a useful role can occur in a genome")
     private int maxMulti;
 
     /** comma-delimited list of acceptable genome domains */
@@ -128,19 +128,23 @@ public class RolesProcessor extends BaseProcessor {
     @Argument(index = 0, metaVar = "CoreSEED", usage = "coreSEED data directory", required = true)
     private File coreDir;
 
+    /** GTO input directory */
+    @Argument(index = 1, metaVar = "GTOcouple", usage = "GTO input directory", required = true)
+    private File gtoDir;
+
     /** input directory */
-    @Argument(index = 1, metaVar = "inDir", usage = "input evaluation directory", required = true)
+    @Argument(index = 2, metaVar = "inDir", usage = "input evaluation directory", required = true)
     private File inDir;
 
     /** output directory */
-    @Argument(index = 2, metaVar = "outDir", usage = "output evaluation directory", required = true)
+    @Argument(index = 3, metaVar = "outDir", usage = "output evaluation directory", required = true)
     private File outDir;
 
     @Override
     protected void setDefaults() {
         this.minSize = 300000;
         this.minOccur = 100;
-        this.maxMulti = 3;
+        this.maxMulti = 5;
         this.domainString = DOMAINS;
         this.clearFlag = false;
     }
@@ -176,10 +180,9 @@ public class RolesProcessor extends BaseProcessor {
         if (! this.subsysDir.isDirectory())
             throw new FileNotFoundException(this.coreDir + " subsystem directory not found or invalid.");
         // Get its genome directory.
-        File genomeDir = new File(this.coreDir, "GTOCouple");
-        if (! genomeDir.isDirectory())
-            throw new FileNotFoundException(this.coreDir + " GTO directory not found or invalid.");
-        this.genomes = new GenomeDirectory(genomeDir);
+        if (! this.gtoDir.isDirectory())
+            throw new FileNotFoundException("GTO directory " + this.gtoDir + " not found or invalid.");
+        this.genomes = new GenomeDirectory(this.gtoDir);
         log.info("{} GTOs found in directory.", this.genomes.size());
         return true;
     }
@@ -233,7 +236,7 @@ public class RolesProcessor extends BaseProcessor {
                 String[] roleNames = Feature.rolesOfFunction(function);
                 for (String roleName : roleNames) {
                     // Only process non-hypotheticals.
-                    if (! Feature.isHypothetical(roleName)) {
+                    if (! roleName.contentEquals("hypothetical protein")) {
                         // Get this role's ID.
                         Role role = this.roleMap.findOrInsert(roleName);
                         // Insure the role name is up to date.
