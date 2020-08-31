@@ -11,7 +11,10 @@ import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
@@ -65,6 +68,8 @@ public class SubsystemListProcessor extends BaseProcessor {
     private Map<String, String> fidFunctions;
     /** output stream for orphan-role report */
     private FileOutputStream orphanStream;
+    /** relevant feature types */
+    private static Set<String> TYPES = Stream.of("peg", "rna").collect(Collectors.toSet());
 
     // COMMAND-LINE OPTIONS
 
@@ -174,7 +179,7 @@ public class SubsystemListProcessor extends BaseProcessor {
             log.info("Scanning genome {}.", genomeId);
             // Get this genome's directory and read its functional assignments.
             File genomeDir = new File(orgRoot, genomeId);
-            Map<String, String> gFunctions = RowData.readFunctions(genomeDir, genomeId, null);
+            Map<String, String> gFunctions = RowData.readFunctions(genomeDir, genomeId, TYPES);
             for (Map.Entry<String, String> fidFunction : gFunctions.entrySet()) {
                 // Ignore hypothetical protein.
                 String function = fidFunction.getValue();
