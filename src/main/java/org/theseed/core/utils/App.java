@@ -32,6 +32,9 @@ public class App
         case "subList" :
             processor = new SubsystemListProcessor();
             break;
+        case "search" :
+            processor = new FidSearchProcessor();
+            break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }

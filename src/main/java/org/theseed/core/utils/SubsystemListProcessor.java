@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.OrganismDirectories;
+import org.theseed.proteins.Function;
 import org.theseed.subsystems.ColumnData;
 import org.theseed.subsystems.RowData;
 import org.theseed.subsystems.SubsystemData;
@@ -193,7 +194,7 @@ public class SubsystemListProcessor extends BaseProcessor {
                     }
                     // If this is a compound role, remember it as a compound.
                     if (fidRoles.length > 1)
-                        this.fidFunctions.put(fidFunction.getKey(), Feature.commentFree(function));
+                        this.fidFunctions.put(fidFunction.getKey(), Function.commentFree(function));
                 }
             }
         }
