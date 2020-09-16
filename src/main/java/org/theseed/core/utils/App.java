@@ -35,6 +35,9 @@ public class App
         case "search" :
             processor = new FidSearchProcessor();
             break;
+        case "proteins" :
+            processor = new ProteinsProcessor();
+            break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }
