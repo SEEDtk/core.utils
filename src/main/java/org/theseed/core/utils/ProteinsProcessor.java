@@ -37,6 +37,8 @@ import org.theseed.utils.BaseProcessor;
 
 import com.github.cliftonlabs.json_simple.JsonObject;
 
+// TODO convert to protein finders
+
 /**
  * This object creates a table of all the protein sequences in CoreSEED and uses it to build a correspondence
  * between PATRIC functions and CoreSEED functions.
