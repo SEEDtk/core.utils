@@ -6,15 +6,11 @@ package org.theseed.core.utils;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.kohsuke.args4j.Argument;
@@ -22,32 +18,21 @@ import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.counters.CountMap;
-import org.theseed.genome.core.OrganismDirectories;
-import org.theseed.io.MarkerFile;
-import org.theseed.p3api.Connection;
-import org.theseed.p3api.Connection.Table;
 import org.theseed.proteins.Function;
 import org.theseed.proteins.FunctionFilter;
 import org.theseed.proteins.FunctionMap;
-import org.theseed.sequence.FastaInputStream;
-import org.theseed.sequence.MD5Hex;
-import org.theseed.sequence.Sequence;
-import org.theseed.subsystems.RowData;
 import org.theseed.utils.BaseProcessor;
-
-import com.github.cliftonlabs.json_simple.JsonObject;
-
-// TODO convert to protein finders
+import org.theseed.proteins.ProteinFinder;
 
 /**
  * This object creates a table of all the protein sequences in CoreSEED and uses it to build a correspondence
  * between PATRIC functions and CoreSEED functions.
  *
- * The positional parameter is the name of the CoreSEED data directory.  The command-line options are as follows.
+ * The positional parameters are the name of the CoreSEED data directory and the name of a directory containing
+ * PATRIC GTOs to process.  The command-line options are as follows.
  *
  * -h	display command-line usage
  * -v	display more frequent progress messages
- * -b	batch size for PATRIC protein requests
  *
  * --min		minimum percent for a good mapping
  * --filter		type of function filtering (default is ROLE)
@@ -55,7 +40,7 @@ import com.github.cliftonlabs.json_simple.JsonObject;
  * @author Bruce Parrello
  *
  */
-public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.Parms {
+public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.Parms, ProteinFinder.Parms {
 
     // FIELDS
     /** logging facility */
@@ -66,20 +51,12 @@ public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.P
     private Map<String, CountMap<String>> protFunctionMap;
     /** map of PATRIC functions to CoreSEED functions */
     private Map<String, CountMap<String>> funFunctionMap;
+    /** set of proteins found in PATRIC scan (logging only-- info level) */
+    private Set<String> protsFound;
     /** active function filter */
     private FunctionFilter funFilter;
-    /** organism directory structure */
-    private OrganismDirectories orgDirs;
-    /** MD5 computer for proteins */
-    private MD5Hex md5Computer;
     /** organism base directory */
     private File orgBase;
-    /** set used to filter only for pegs */
-    private Set<String> PEG_SET = Collections.singleton("peg");
-    /** pattern for prokaryotic taxonomies */
-    private Pattern PROKARYOTIC = Pattern.compile("\\s*(?:Bacteria|Archaea);.+");
-    /** connection to PATRIC */
-    private Connection p3;
 
     // COMMAND-LINE OPTIONS
 
@@ -91,18 +68,18 @@ public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.P
     @Option(name = "--min", metaVar = "95.0", usage = "minimum percent cases to qualify for a good mapping")
     private double minPercent;
 
-    /** batch size for requests to PATRIC */
-    @Option(name = "-b", aliases = { "--batchSize" }, usage = "batch size for PATRIC requests")
-    private int batchSize;
-
     /** CoreSEED directory */
     @Argument(index = 0, metaVar = "CoreSEED", usage = "CoreSEED data directory")
     private File coreDir;
 
+    /** PATRIC GTO directory */
+    @Argument(index = 1, metaVar = "gtoDir", usage = "genome input directory")
+    private File gtoDir;
+
     @Override
     protected void setDefaults() {
         this.filterType = FunctionFilter.Type.ROLE;
-        this.batchSize = 200;
+        this.minPercent = 80.0;
     }
 
     @Override
@@ -114,19 +91,14 @@ public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.P
             throw new FileNotFoundException("No organism directory found for " + this.coreDir + ".");
         if (this.minPercent > 100.0 || this.minPercent < 0.0)
             throw new IllegalArgumentException("Minimum percent must be between 0 and 100 inclusive.");
-        // Get the organism directories.
-        this.orgDirs = new OrganismDirectories(orgBase);
         // Create the function map and filter.
         this.funMap = new FunctionMap();
         this.funFilter = this.filterType.create(this.funMap, this);
-        // Initialize the MD5 computer and the protein-counting map.
-        try {
-            this.md5Computer = new MD5Hex();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
+        // Initialize the protein-counting maps.
         this.protFunctionMap = new HashMap<String, CountMap<String>>(2500000);
         this.funFunctionMap = new HashMap<String, CountMap<String>>(100000);
+        if (log.isInfoEnabled())
+            this.protsFound = new HashSet<String>(2500000);
         return true;
     }
 
@@ -134,72 +106,41 @@ public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.P
     protected void runCommand() throws Exception {
         // Set up the counters.
         int proteinsIn = 0;
-        int genomesIn = 0;
         int badFunctions = 0;
-        // Loop through the genomes.
-        for (String genome : this.orgDirs) {
-            File orgDir = new File(this.orgBase, genome);
-            log.info("Processing genome {}.", genome);
-            // Locate the peg fasta file.
-            File pegFile = new File(orgDir, "Features/peg/fasta");
-            if (! pegFile.exists())
-                log.warn("Genome {} has no protein FASTA.", genome);
+        // Loop through the coreSEED proteins.
+        ProteinFinder.Container proteins = ProteinFinder.Type.CORE.create(this);
+        for (ProteinFinder.Instance protein : proteins) {
+            proteinsIn++;
+            String function = protein.getFunction();
+            String funId = this.funFilter.checkFunction(function);
+            if (funId == null)
+                badFunctions++;
             else {
-                // Verify that this is a prokaryote.
-                String taxString = MarkerFile.read(new File(orgDir, "TAXONOMY"));
-                Matcher m = PROKARYOTIC.matcher(taxString);
-                if (m.matches()) {
-                    genomesIn++;
-                    // Get all the genome's functions.
-                    Map<String, String> functions = RowData.readFunctions(orgDir, genome, PEG_SET);
-                    log.info("{} peg assignments found.", functions.size());
-                    // Now loop through the sequences.
-                    try (FastaInputStream pegStream = new FastaInputStream(pegFile)) {
-                        for (Sequence protein : pegStream) {
-                            proteinsIn++;
-                            String function = functions.get(protein.getLabel());
-                            String funId = this.funFilter.checkFunction(function);
-                            if (funId == null)
-                                badFunctions++;
-                            else {
-                                // Now we can count this function for this protein.
-                                String md5 = this.md5Computer.sequenceMD5(protein.getSequence());
-                                CountMap<String> funCounts = this.protFunctionMap.computeIfAbsent(md5, p -> new CountMap<String>());
-                                funCounts.count(funId);
-                            }
-                        }
-                    }
-                    log.info("{} genomes processed. {} pegs read, {} rejected, {} non-redundant sequences.",
-                            genomesIn, proteinsIn, badFunctions, this.protFunctionMap.size());
-                }
+                // Now we can count this function for this protein.
+                String md5 = protein.getMd5();
+                CountMap<String> funCounts = this.protFunctionMap.computeIfAbsent(md5, p -> new CountMap<String>());
+                funCounts.count(funId);
             }
         }
-        // Now we have processed all the CoreSEED genomes.  Extract features from PATRIC to compute the
+        log.info("{} pegs read, {} rejected, {} non-redundant sequences.",
+                proteinsIn, badFunctions, this.protFunctionMap.size());
+        // Now we have processed all the CoreSEED genomes.  Extract features from the PATRIC genomes to compute the
         // function-to-function correspondence.
-        log.info("Connecting to PATRIC.");
-        this.p3 = new Connection();
-        // The following array is used to buffer sequences for each batch request to PATRIC.
-        List<String> md5Buffer = new ArrayList<String>(this.batchSize);
-        // Loop through the sequence MD5s, making PATRIC requests.
-        int totalMD5s = this.protFunctionMap.size();
+        proteins = ProteinFinder.Type.GTO.create(this);
         int processed = 0;
+        int counted = 0;
         log.info("Scanning proteins.");
-        long start = System.currentTimeMillis();
-        for (String md5 : this.protFunctionMap.keySet()) {
-            if (md5Buffer.size() >= this.batchSize) {
-                this.processBatch(md5Buffer);
-                processed += md5Buffer.size();
-                md5Buffer.clear();
-                if (log.isInfoEnabled()) {
-                    double speed = (System.currentTimeMillis() - start) / (1000.0 * processed);
-                    log.info("{} of {} proteins processed, {} seconds/protein.", processed, totalMD5s, speed);
-                }
-            }
-            md5Buffer.add(md5);
+        for (ProteinFinder.Instance protein : proteins) {
+            if (this.processFeature(protein)) counted++;
+            processed++;
         }
-        this.processBatch(md5Buffer);
         // Now we produce the report.
-        log.info("Preparing report.  {} PATRIC functions found in {} proteins.", this.funFunctionMap.size(), processed);
+        log.info("Preparing report.  {} PATRIC functions found. {} pegs used out of {} scanned.", this.funFunctionMap.size(),
+                counted, processed);
+        if (log.isInfoEnabled()) {
+            int missing = this.protFunctionMap.size() - this.protsFound.size();
+            log.info("{} proteins in CoreSEED were not found in PATRIC genomes.", missing);
+        }
         System.out.println("patric_function\tcore_function\tcount\tgood");
         int simpleMappings = 0;
         int goodMappings = 0;
@@ -222,47 +163,53 @@ public class ProteinsProcessor extends BaseProcessor implements FunctionFilter.P
                     good = "Y";
                 }
             }
-            for (CountMap<String>.Count count : countList)
+            // Note that only the FIRST pairing gets the "good" flag, since this is always the dominant function.
+            for (CountMap<String>.Count count : countList) {
                 System.out.format("%s\t%s\t%d\t%s%n", fun.getName(), this.funMap.getName(count.getKey()), count.getCount(), good);
+                good = "";
+            }
         }
         log.info("{} PATRIC functions found.  {} simple mappings, {} good mappings.", allFuns.size(), simpleMappings, goodMappings);
     }
 
     /**
-     * Process a batch of protein sequences.
+     * Process a feature from PATRIC to update the function map counts.
      *
-     * @param md5list	list of protein MD5s for the proteins to process
-     */
-    private void processBatch(List<String> md5list) {
-        List<JsonObject> records = p3.getRecords(Table.FEATURE, "aa_sequence_md5", md5list, "aa_sequence_md5,product");
-        log.info("{} features found for {} proteins.", records.size(), md5list.size());
-        processFeatures(records);
-    }
-
-    /**
-     * Process features from PATRIC to update the function map counts.
+     * @param record	protein instance to process
      *
-     * @param records	list of feature records, containing the protein MD5 and functional assignment
+     * @return TRUE if we cared about this protein
      */
-    protected void processFeatures(List<JsonObject> records) {
-        for (JsonObject record : records) {
-            String md5 = Connection.getString(record, "aa_sequence_md5");
-            CountMap<String> protCounts = this.protFunctionMap.get(md5);
-            if (protCounts != null) {
-                // Here the sequence corresponds to one we're interested in.  Get the count map for this function.
-                // If the product string is null or empty, we will get back a null or empty result, in which case
-                // we skip this record.
-                Function fun = this.funMap.findOrInsert(Connection.getString(record, "product"));
-                if (fun != null) {
-                    // Get the counts for this PATRIC function.
-                    String funId = fun.getId();
-                    CountMap<String> funCounts = this.funFunctionMap.computeIfAbsent(funId, x -> new CountMap<String>());
-                    // Add in the coreSEED function counts.
-                    for (CountMap<String>.Count protCount : protCounts.counts())
-                        funCounts.count(protCount.getKey(), protCount.getCount());
-                }
+    protected boolean processFeature(ProteinFinder.Instance record) {
+        boolean retVal = false;
+        String md5 = record.getMd5();
+        CountMap<String> protCounts = this.protFunctionMap.get(md5);
+        if (protCounts != null) {
+            if (log.isInfoEnabled()) this.protsFound.add(md5);
+            // Here the sequence corresponds to one we're interested in.  Get the count map for this function.
+            // If the product string is null or empty, we will get back a null or empty result, in which case
+            // we skip this record.
+            Function fun = this.funMap.findOrInsert(record.getFunction());
+            if (fun != null) {
+                // Get the counts for this PATRIC function.
+                String funId = fun.getId();
+                CountMap<String> funCounts = this.funFunctionMap.computeIfAbsent(funId, x -> new CountMap<String>());
+                // Add in the coreSEED function counts.
+                for (CountMap<String>.Count protCount : protCounts.counts())
+                    funCounts.count(protCount.getKey(), protCount.getCount());
+                retVal = true;
             }
         }
+        return retVal;
+    }
+
+    @Override
+    public File getGtoDir() {
+        return this.gtoDir;
+    }
+
+    @Override
+    public File getOrgDir() {
+        return this.orgBase;
     }
 
 }

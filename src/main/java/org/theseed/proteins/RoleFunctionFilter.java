@@ -17,7 +17,7 @@ public class RoleFunctionFilter extends FunctionFilter {
 
     // FIELDS
     /** multi-functional role pattern */
-    private static final Pattern MULTI_ROLE = Pattern.compile("\\s@\\s|\\s;|\\s=>\\s|\\s/\\s");
+    private static final Pattern MULTI_ROLE = Pattern.compile("\\s@\\s|\\s;|\\s/\\s");
 
     public RoleFunctionFilter(FunctionMap funcMap, FunctionFilter.Parms processor) {
         super(funcMap);
