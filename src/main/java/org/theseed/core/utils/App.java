@@ -11,6 +11,7 @@ import org.theseed.utils.BaseProcessor;
  * roles		create the roles.in.subsystems file
  * tables		create the tables required to build the evaluator
  * subList		produce a short subsystem summary report
+ * compress		compress a role-coupling file
  *
  */
 public class App
@@ -23,6 +24,9 @@ public class App
         BaseProcessor processor;
         // Determine the command to process.
         switch (command) {
+        case "compress" :
+            processor = new CouplingCompressProcessor();
+            break;
         case "updates" :
             processor = new UpdateProcessor();
             break;
