@@ -111,6 +111,12 @@ public class UpdateProcessor extends BaseProcessor {
         File evalIn = new File(this.coreDir, "Eval");
         File evalOut = new File(this.coreDir, "Eval.New");
         this.execute(new RolesProcessor(), null, "--clear", this.coreDir, this.outDir, evalIn, evalOut);
+        // STEP 8: Generate the role couplings.
+        File rCouplingTable = new File(this.coreDir, "roles.couplings.tbl");
+        this.execute(new CouplesProcessor(), rCouplingTable, this.outDir);
+        // STEP 9: Compress the role couplings.
+        File rCouplingBin = new File(this.coreDir, "roles.coupling.ser");
+        this.execute(new CouplingCompressProcessor(), null, "-i", rCouplingTable.getAbsolutePath(), rCouplingBin.getAbsolutePath());
         // All done.
         log.info("All done.");
     }
