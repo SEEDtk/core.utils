@@ -50,6 +50,7 @@ import org.theseed.utils.BaseProcessor;
  * 	labels.txt				rebuilt
  * 	roles.to.use			rebuilt
  * 	questionables.tbl		copied unchanged
+ *  roles.init.tbl			copied unchanged
  *
  * The questionables.tbl file contains genome IDs in the first column.  Genomes will only be processed into raw.table
  * if (1) their ID is not in questionables.tbl, (2) they have at least 300,000 base pairs in the contigs, and (3) they
@@ -189,11 +190,13 @@ public class RolesProcessor extends BaseProcessor {
 
     @Override
     protected void runCommand() throws Exception {
-        // Copy the blacklist and the parm file.
+        // Copy the blacklist, the role initialization table, and the parm file.
         File qFile = new File(this.inDir, "questionables.tbl");
         File pFile = new File(this.inDir, "parms.prm");
+        File iFile = new File(this.inDir, "roles.init.tbl");
         FileUtils.copyFileToDirectory(qFile, this.outDir);
         FileUtils.copyFileToDirectory(pFile, this.outDir);
+        FileUtils.copyFileToDirectory(iFile, this.outDir);
         // Read in the list of questionable genomes.
         this.badGenomes = LineReader.readSet(qFile);
         log.info("{} questionable genomes in list.", this.badGenomes.size());
