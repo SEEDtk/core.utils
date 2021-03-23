@@ -12,6 +12,7 @@ import org.theseed.utils.BaseProcessor;
  * tables		create the tables required to build the evaluator
  * subList		produce a short subsystem summary report
  * compress		compress a role-coupling file
+ * search		search for features by function pattern
  *
  */
 public class App
