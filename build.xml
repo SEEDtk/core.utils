@@ -29,7 +29,7 @@
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/org/apache/httpcomponents/httpcore/4.4.13/httpcore-4.4.13.jar"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/commons-logging/commons-logging/1.2/commons-logging-1.2.jar"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/org/apache/httpcomponents/fluent-hc/4.5.12/fluent-hc-4.5.12.jar"/>
-            <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/commons-io/commons-io/2.6/commons-io-2.6.jar"/>
+            <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/commons-io/commons-io/2.8.0/commons-io-2.8.0.jar"/>
             <fileset dir="${dir.workspace}/git/genome.download/target/classes"/>
             <fileset dir="${dir.workspace}/git/web.subsystems/target/classes"/>
             <fileset dir="${dir.workspace}/git/core/target/classes"/>

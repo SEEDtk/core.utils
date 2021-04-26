@@ -146,7 +146,7 @@ public class UpdateProcessor extends BaseProcessor {
         // Set up the output stream.
         OutputStream outStream;
         if (stdOut == null)
-            outStream = new NullOutputStream();
+            outStream = NullOutputStream.NULL_OUTPUT_STREAM;
         else {
             log.info("Output will be to {}.", stdOut);
             outStream = new FileOutputStream(stdOut);

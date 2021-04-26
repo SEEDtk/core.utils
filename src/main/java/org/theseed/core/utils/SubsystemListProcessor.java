@@ -50,6 +50,7 @@ import org.theseed.utils.BaseProcessor;
  *
  * --public		only process public subsystems
  * --orphans	if specified, the name of a file to contain the orphan-role report
+ * --counts		if specified, the name of a file to contain a count of the number of subsystems containing each role
  *
  * @author Bruce Parrello
  *
@@ -63,12 +64,16 @@ public class SubsystemListProcessor extends BaseProcessor {
     private File subsysDir;
     /** count map of roles in the coreSEED */
     private CountMap<String> roleCounts;
+    /** count map of subsystems containing each function */
+    private CountMap<String> funCounts;
     /** map of roles that have not yet matched a subsystem role to sample feature IDs */
     private Map<String, String> roleFids;
     /** map of feature IDs to compound functions */
     private Map<String, String> fidFunctions;
     /** output stream for orphan-role report */
     private FileOutputStream orphanStream;
+    /** output stream for subsystem-count report */
+    private FileOutputStream countStream;
     /** relevant feature types */
     private static Set<String> TYPES = Stream.of("peg", "rna").collect(Collectors.toSet());
 
@@ -82,6 +87,10 @@ public class SubsystemListProcessor extends BaseProcessor {
     @Option(name = "--orphans", usage = "output file for orphan-role report")
     private File orphanFile;
 
+    /** output file for role-count report */
+    @Option(name = "--counts", usage = "output file for role-count report")
+    private File countFile;
+
     /** CoreSEED data directory */
     @Argument(index = 0, metaVar = "CoreSEED/FIG/Data", usage = "coreSEED data directory", required = true)
     private File coreDir;
@@ -90,6 +99,7 @@ public class SubsystemListProcessor extends BaseProcessor {
     protected void setDefaults() {
         this.orphanFile = null;
         this.orphanStream = null;
+        this.countStream = null;
     }
 
     @Override
@@ -103,67 +113,90 @@ public class SubsystemListProcessor extends BaseProcessor {
             // This insures we can open the orphan file for output.
             this.orphanStream = new FileOutputStream(this.orphanFile);
         }
+        // Check for a subsystem-count report.
+        if (this.countFile != null) {
+            // This insures we can open the count file for output.
+            this.countStream = new FileOutputStream(this.countFile);
+        }
         return true;
     }
 
     @Override
     protected void runCommand() throws Exception {
-        // Create the maps.
-        this.fidFunctions = new HashMap<String, String>(5000);
-        this.roleFids = new TreeMap<String, String>();
-        this.roleCounts = new CountMap<String>();
-        // Initialize the maps from the genomes.
-        this.processGenomes();
-        // Get the list of subsystems.
-        File[] subsysFiles = this.subsysDir.listFiles(new SubsystemFilter());
-        log.info("{} subsystems found in {}.", subsysFiles.length, this.coreDir);
-        // Write the output header.
-        System.out.println("role_name\tsubsystem\tcurator\tcount\tprivate");
-        // Loop through the subsystems.
-        for (File subsysFile : subsysFiles) {
-            SubsystemData subsystem = SubsystemData.load(this.coreDir, subsysFile.getName());
-            if (subsystem == null)
-                log.warn("Subsystem {} not found.", subsysFile.getName());
-            else {
-                String curator = subsystem.getCurator();
-                String flag = (subsystem.isPrivate() ? "Y" : "");
-                // Make sure the private-subsystem filter is handled.
-                if (flag.isEmpty() && this.publicOnly)
-                    log.info("Skipping private subsystem {}.", subsystem.getName());
+        try {
+            // Create the maps.
+            this.fidFunctions = new HashMap<String, String>(5000);
+            this.roleFids = new TreeMap<String, String>();
+            this.roleCounts = new CountMap<String>();
+            this.funCounts = new CountMap<String>();
+            // Initialize the maps from the genomes.
+            this.processGenomes();
+            // Get the list of subsystems.
+            File[] subsysFiles = this.subsysDir.listFiles(new SubsystemFilter());
+            log.info("{} subsystems found in {}.", subsysFiles.length, this.coreDir);
+            // Write the output header.
+            System.out.println("role_name\tsubsystem\tcurator\tcount\tprivate");
+            // Loop through the subsystems.
+            for (File subsysFile : subsysFiles) {
+                SubsystemData subsystem = SubsystemData.load(this.coreDir, subsysFile.getName());
+                if (subsystem == null)
+                    log.warn("Subsystem {} not found.", subsysFile.getName());
                 else {
-                    log.info("Processing subsystem: {}.", subsystem.getName());
-                    for (ColumnData col : subsystem.getColumns()) {
-                        String[] roles = Feature.rolesOfFunction(col.getFunction());
-                        // Remove these roles from the roles-not-found map.
-                        Arrays.stream(roles).forEach(r -> this.roleFids.remove(r));
-                        // Compute the number of times the role occurs.
-                        int count = 0;
-                        if (roles.length == 1) {
-                            // Here we have a simple role.
-                            count = this.roleCounts.getCount(roles[0]);
-                        } else {
-                            // Here we have a compound role, so we need to run through the compound-role list
-                            // and count by hand.
-                            for (Map.Entry<String, String> fidEntry : this.fidFunctions.entrySet()) {
-                                if (col.matches(fidEntry.getValue()))
-                                    count++;
+                    String curator = subsystem.getCurator();
+                    String flag = (subsystem.isPrivate() ? "Y" : "");
+                    // Make sure the private-subsystem filter is handled.
+                    if (! flag.isEmpty() && this.publicOnly)
+                        log.info("Skipping private subsystem {}.", subsystem.getName());
+                    else {
+                        log.info("Processing subsystem: {}.", subsystem.getName());
+                        for (ColumnData col : subsystem.getColumns()) {
+                            String[] roles = Feature.rolesOfFunction(col.getFunction());
+                            // Remove these roles from the roles-not-found map.
+                            Arrays.stream(roles).forEach(r -> this.roleFids.remove(r));
+                            // Compute the number of times the role occurs.
+                            int count = 0;
+                            if (roles.length == 1) {
+                                // Here we have a simple role.
+                                count = this.roleCounts.getCount(roles[0]);
+                            } else {
+                                // Here we have a compound role, so we need to run through the compound-role list
+                                // and count by hand.
+                                for (Map.Entry<String, String> fidEntry : this.fidFunctions.entrySet()) {
+                                    if (col.matches(fidEntry.getValue()))
+                                        count++;
+                                }
                             }
+                            System.out.format("%s\t%s\t%s\t%d\t%s%n", col.getFunction(), subsystem.getName(), curator, count, flag);
+                            // Count this role's occurrence in a subsystem.
+                            this.funCounts.count(col.getFunction());
                         }
-                        System.out.format("%s\t%s\t%s\t%d\t%s%n", col.getFunction(), subsystem.getName(), curator, count, flag);
                     }
                 }
             }
-        }
-        // Now we need to write out the orphan roles.
-        if (this.orphanStream != null)
-            try (PrintWriter orphanWriter = new PrintWriter(this.orphanStream)) {
-                log.info("Writing orphan report. {} orphans found.", this.roleFids.size());
-                orphanWriter.println("role_name\tfid\tcount");
-                for (Map.Entry<String, String> roleEntry : this.roleFids.entrySet()) {
-                    String role = roleEntry.getKey();
-                    orphanWriter.format("%s\t%s\t%d%n", role, roleEntry.getValue(), this.roleCounts.getCount(role));
+            // Now we need to write out the orphan roles.
+            if (this.orphanStream != null)
+                try (PrintWriter orphanWriter = new PrintWriter(this.orphanStream)) {
+                    log.info("Writing orphan report. {} orphans found.", this.roleFids.size());
+                    orphanWriter.println("role_name\tfid\tcount");
+                    for (Map.Entry<String, String> roleEntry : this.roleFids.entrySet()) {
+                        String role = roleEntry.getKey();
+                        orphanWriter.format("%s\t%s\t%d%n", role, roleEntry.getValue(), this.roleCounts.getCount(role));
+                    }
                 }
-            }
+            // Here we write out the function counts.
+            if (this.countStream != null)
+                try (PrintWriter countWriter = new PrintWriter(this.countStream)) {
+                    log.info("Writing count report. {} functions found.", this.funCounts.size());
+                    countWriter.println("role_name\tsub_count");
+                    for (CountMap<String>.Count count : this.funCounts.sortedCounts())
+                        countWriter.format("%s\t%d%n", count.getKey(), count.getCount());
+                }
+        } finally {
+            if (this.countStream != null)
+                this.countStream.close();
+            if (this.orphanStream != null)
+                this.orphanStream.close();
+        }
     }
 
     /**
