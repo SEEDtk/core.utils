@@ -8,8 +8,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -51,6 +53,8 @@ import org.theseed.utils.BaseProcessor;
  * --public		only process public subsystems
  * --orphans	if specified, the name of a file to contain the orphan-role report
  * --counts		if specified, the name of a file to contain a count of the number of subsystems containing each role
+ * --aux		if specified, auxiliary roles are included
+ * --deadRoles	if specified, the name of a file to contain a list of roles not in genomes
  *
  * @author Bruce Parrello
  *
@@ -74,6 +78,8 @@ public class SubsystemListProcessor extends BaseProcessor {
     private FileOutputStream orphanStream;
     /** output stream for subsystem-count report */
     private FileOutputStream countStream;
+    /** dead-role map */
+    private Map<String, List<String>> deadRoleMap;
     /** relevant feature types */
     private static Set<String> TYPES = Stream.of("peg", "rna").collect(Collectors.toSet());
 
@@ -87,9 +93,17 @@ public class SubsystemListProcessor extends BaseProcessor {
     @Option(name = "--orphans", usage = "output file for orphan-role report")
     private File orphanFile;
 
+    /** output file for dead-role report */
+    @Option(name = "--deadRoles", usage = "output file for dead-role report")
+    private File deadRoleFile;
+
     /** output file for role-count report */
     @Option(name = "--counts", usage = "output file for role-count report")
     private File countFile;
+
+    /** if specified, auxiliary roles will be included */
+    @Option(name = "--aux", usage = " include auxiliary roles")
+    private boolean includeAux;
 
     /** CoreSEED data directory */
     @Argument(index = 0, metaVar = "CoreSEED/FIG/Data", usage = "coreSEED data directory", required = true)
@@ -100,6 +114,9 @@ public class SubsystemListProcessor extends BaseProcessor {
         this.orphanFile = null;
         this.orphanStream = null;
         this.countStream = null;
+        this.includeAux = false;
+        this.publicOnly = false;
+        this.deadRoleFile = null;
     }
 
     @Override
@@ -129,6 +146,7 @@ public class SubsystemListProcessor extends BaseProcessor {
             this.roleFids = new TreeMap<String, String>();
             this.roleCounts = new CountMap<String>();
             this.funCounts = new CountMap<String>();
+            this.deadRoleMap = new TreeMap<String, List<String>>();
             // Initialize the maps from the genomes.
             this.processGenomes();
             // Get the list of subsystems.
@@ -145,12 +163,14 @@ public class SubsystemListProcessor extends BaseProcessor {
                     String curator = subsystem.getCurator();
                     String flag = (subsystem.isPrivate() ? "Y" : "");
                     // Make sure the private-subsystem filter is handled.
+                    String subName = subsystem.getName();
                     if (! flag.isEmpty() && this.publicOnly)
-                        log.info("Skipping private subsystem {}.", subsystem.getName());
+                        log.info("Skipping private subsystem {}.", subName);
                     else {
-                        log.info("Processing subsystem: {}.", subsystem.getName());
+                        log.info("Processing subsystem: {}.", subName);
                         for (ColumnData col : subsystem.getColumns()) {
-                            String[] roles = Feature.rolesOfFunction(col.getFunction());
+                            String function = col.getFunction();
+                            String[] roles = Feature.rolesOfFunction(function);
                             // Remove these roles from the roles-not-found map.
                             Arrays.stream(roles).forEach(r -> this.roleFids.remove(r));
                             // Compute the number of times the role occurs.
@@ -166,9 +186,17 @@ public class SubsystemListProcessor extends BaseProcessor {
                                         count++;
                                 }
                             }
-                            System.out.format("%s\t%s\t%s\t%d\t%s%n", col.getFunction(), subsystem.getName(), curator, count, flag);
-                            // Count this role's occurrence in a subsystem.
-                            this.funCounts.count(col.getFunction());
+                            if (count == 0) {
+                                // Here we have a dead role, so add it to the dead-role map.
+                                List<String> roleSubs = this.deadRoleMap.computeIfAbsent(function, x -> new ArrayList<String>());
+                                roleSubs.add(subName);
+                            }
+                            // Check for an auxiliary role before we print.
+                            if (this.includeAux || ! col.isAux()) {
+                                System.out.format("%s\t%s\t%s\t%d\t%s%n", function, subName, curator, count, flag);
+                                // Count this role's occurrence in a subsystem.
+                                this.funCounts.count(function);
+                            }
                         }
                     }
                 }
@@ -191,6 +219,18 @@ public class SubsystemListProcessor extends BaseProcessor {
                     for (CountMap<String>.Count count : this.funCounts.sortedCounts())
                         countWriter.format("%s\t%d%n", count.getKey(), count.getCount());
                 }
+            // Finally, the dead roles.
+            if (this.deadRoleFile != null) {
+                try (PrintWriter deadWriter = new PrintWriter(this.deadRoleFile)) {
+                    log.info("Writing dead-role report. {} functions found.", this.deadRoleMap.size());
+                    deadWriter.println("role name\tsubsystem");
+                    for (Map.Entry<String, List<String>> deadRoleData : this.deadRoleMap.entrySet()) {
+                        String role = deadRoleData.getKey();
+                        for (String subsys : deadRoleData.getValue())
+                            deadWriter.println(role + "\t" + subsys);
+                    }
+                }
+            }
         } finally {
             if (this.countStream != null)
                 this.countStream.close();
