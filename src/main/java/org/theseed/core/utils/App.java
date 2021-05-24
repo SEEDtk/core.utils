@@ -13,6 +13,8 @@ import org.theseed.utils.BaseProcessor;
  * subList		produce a short subsystem summary report
  * compress		compress a role-coupling file
  * search		search for features by function pattern
+ * csearch		search for coupled features in specific categories
+ * proteins		use protein sequences to map CoreSEED functions to PATRIC functions
  *
  */
 public class App
@@ -42,6 +44,9 @@ public class App
             break;
         case "proteins" :
             processor = new ProteinsProcessor();
+            break;
+        case "csearch" :
+            processor = new CouplingSearchProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
