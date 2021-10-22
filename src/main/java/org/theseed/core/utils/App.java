@@ -15,6 +15,7 @@ import org.theseed.utils.BaseProcessor;
  * search		search for features by function pattern
  * csearch		search for coupled features in specific categories
  * proteins		use protein sequences to map CoreSEED functions to PATRIC functions
+ * tablePage	build a static table web page
  *
  */
 public class App
@@ -48,6 +49,9 @@ public class App
         case "csearch" :
             processor = new CouplingSearchProcessor();
             break;
+        case "tablePage" :
+        	processor = new TablePageProcessor();
+        	break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }
