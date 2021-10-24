@@ -57,6 +57,9 @@ public abstract class TemplateHandler {
 	public static final TemplateHandler getHandler(String command) throws IOException {
 		TemplateHandler retVal;
 		switch (command.toLowerCase()) {
+		case "fid-table" :
+			retVal = new FeatureTableCommandHandler();
+			break;
 		case "table-file" :
 			retVal = new TableFileCommandHandler();
 			break;

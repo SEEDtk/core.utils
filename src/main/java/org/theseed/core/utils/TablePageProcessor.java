@@ -29,7 +29,11 @@ import java.util.regex.Matcher;
  * 		<!-- $table-file name="XXXXX" -->
  * 
  * where "XXXXX" is the name of a tab-delimited file with headers.  The tab-delimited file will be
- * converted into a table.  
+ * converted into a table.
+ * 
+ *  	<!-- $fid-table name="XXXXX" -->
+ *  
+ * is the same as "table-file", but the first column is considered to contain PATRIC feature IDs.
  * 
  * 		<!-- $include name="XXXXX" -->
  * 
