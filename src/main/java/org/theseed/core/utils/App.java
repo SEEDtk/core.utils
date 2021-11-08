@@ -2,6 +2,7 @@ package org.theseed.core.utils;
 
 import java.util.Arrays;
 
+import org.theseed.proj.utils.PomCheckProcessor;
 import org.theseed.utils.BaseProcessor;
 
 /**
@@ -16,6 +17,7 @@ import org.theseed.utils.BaseProcessor;
  * csearch		search for coupled features in specific categories
  * proteins		use protein sequences to map CoreSEED functions to PATRIC functions
  * tablePage	build a static table web page
+ * pom			pom version check
  *
  */
 public class App
@@ -50,8 +52,11 @@ public class App
             processor = new CouplingSearchProcessor();
             break;
         case "tablePage" :
-        	processor = new TablePageProcessor();
-        	break;
+            processor = new TablePageProcessor();
+            break;
+        case "pom" :
+            processor = new PomCheckProcessor();
+            break;
         default:
             throw new RuntimeException("Invalid command " + command);
         }
