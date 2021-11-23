@@ -58,7 +58,7 @@ public class CouplingSearchProcessor extends BaseReportProcessor {
     // COMMAND-LINE OPTIONS
 
     /** type of input source */
-    @Option(name = "--type", aliases = { "-t" }, usage = "genome input source type")
+    @Option(name = "--type", aliases = { "-t", "--source" }, usage = "genome input source type")
     private GenomeSource.Type sourceType;
 
     /** category of target feature */
