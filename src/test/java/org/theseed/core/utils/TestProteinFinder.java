@@ -9,7 +9,6 @@ import java.security.NoSuchAlgorithmException;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.theseed.test.Matchers.*;
 
 import org.apache.commons.lang3.StringUtils;
 import org.theseed.genome.Feature;
@@ -59,7 +58,7 @@ public class TestProteinFinder extends TestCase {
                 }
                 break;
             case "883.3" :
-                assertThat(protein.getFunction().isEmpty(), isFalse());
+                assertThat(protein.getFunction().isEmpty(), equalTo(false));
                 counter883++;
                 break;
             default :
@@ -67,8 +66,8 @@ public class TestProteinFinder extends TestCase {
             }
         }
         assertThat(counter883, equalTo(3467));
-        assertThat(test2found, isTrue());
-        assertThat(test199found, isTrue());
+        assertThat(test2found, equalTo(true));
+        assertThat(test199found, equalTo(true));
     }
 
     public void testGtoFinder() throws IOException, NoSuchAlgorithmException {
