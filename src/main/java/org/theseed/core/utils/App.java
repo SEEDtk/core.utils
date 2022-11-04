@@ -18,6 +18,7 @@ import org.theseed.utils.BaseProcessor;
  * proteins		use protein sequences to map CoreSEED functions to PATRIC functions
  * tablePage	build a static table web page
  * pom			pom version check
+ * p3map		map genomes to identical-sequenced PATRIC genomes
  *
  */
 public class App
@@ -56,6 +57,9 @@ public class App
             break;
         case "pom" :
             processor = new PomCheckProcessor();
+            break;
+        case "p3map" :
+            processor = new P3MapProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
