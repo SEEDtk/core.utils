@@ -119,6 +119,8 @@ public class P3MapProcessor extends BaseReportProcessor {
                     Criterion.EQ("genome_length", Integer.toString(length)),
                     Criterion.EQ("contigs", Integer.toString(contigCount)),
                     Criterion.EQ("public", "1"));
+            final int candTotal = p3GenomeData.size();
+            log.info("{} candidate genomes found for {}.", candTotal, genomeId);
             // These will be used to store the found genome's ID and name.
             String foundId = "";
             String foundName = "";
@@ -138,12 +140,14 @@ public class P3MapProcessor extends BaseReportProcessor {
                     // We need MD5s for the contigs in the source genome.
                     Set<String> genomeMD5s = this.hashContigs(genome);
                     // Loop through the genomes returned until we find a match.
+                    int candCount = 0;
                     var p3iter = p3GenomeData.iterator();
                     while (p3iter.hasNext() && found == null) {
                         candidateCount++;
                         var p3GenomeDatum = p3iter.next();
                         String candidateId = P3Connection.getString(p3GenomeDatum, "genome_id");
-                        log.info("Checking candidate {} against {}.", candidateId, genome);
+                        candCount++;
+                        log.info("Checking candidate #{} of {} ({}) against {}.", candCount, candTotal, candidateId, genome);
                         // Note we only need the contigs here, not any structure data.
                         P3Genome candidateGenome = P3Genome.load(this.p3, candidateId, P3Genome.Details.CONTIGS);
                         Set<String> candidateMD5s = this.hashContigs(candidateGenome);
