@@ -7,8 +7,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.List;
-
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -18,7 +16,6 @@ import org.theseed.genome.Feature;
 import org.theseed.genome.FeatureCategory;
 import org.theseed.genome.Genome;
 import org.theseed.genome.iterator.GenomeSource;
-import org.theseed.proteins.Role;
 import org.theseed.proteins.RoleMap;
 import org.theseed.reports.SpecialCouplingReporter;
 import org.theseed.utils.BaseReportProcessor;
@@ -134,8 +131,8 @@ public class CouplingSearchProcessor extends BaseReportProcessor {
                         Feature feat2 = genome.getFeature(coupling.getTarget());
                         if (this.featCategory2.qualifies(feat2)) {
                             // Here we have a coupling of interest.  Check for exclusion.
-                            List<Role> excluded = feat2.getUsefulRoles(this.exclusions);
-                            if (excluded.size() > 0)
+                            boolean excluded = feat2.isInteresting(this.exclusions);
+                            if (excluded)
                                 xCount++;
                             else {
                                 cCount++;
