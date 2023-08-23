@@ -19,6 +19,7 @@ import org.theseed.utils.BaseProcessor;
  * tablePage	build a static table web page
  * pom			pom version check
  * p3map		map genomes to identical-sequenced PATRIC genomes
+ * functions	create a master list of all functions in CoreSEED
  *
  */
 public class App
@@ -60,6 +61,9 @@ public class App
             break;
         case "p3map" :
             processor = new P3MapProcessor();
+            break;
+        case "functions" :
+            processor = new FunctionProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
