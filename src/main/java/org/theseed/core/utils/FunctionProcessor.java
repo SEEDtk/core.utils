@@ -11,6 +11,8 @@ import java.security.MessageDigest;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
@@ -45,6 +47,8 @@ public class FunctionProcessor extends BaseReportProcessor {
     private MessageDigest md;
     /** core utilities object */
     private CoreUtilities coreSEED;
+    /** rRNA pattern */
+    private static final Pattern R_RNA_MARKER = Pattern.compile("\\b(?:rrna|ribosomal\\s+rna|\\d+s\\s+rna)\\b");
 
     // COMMAND-LINE OPTIONS
 
@@ -134,9 +138,9 @@ public class FunctionProcessor extends BaseReportProcessor {
                             break;
                         case "rna" :
                             String lcFunction = function.toLowerCase();
-                            if (lcFunction.contains("rrna") || lcFunction.contains("ribosomal"))
+                            if (R_RNA_MARKER.matcher(lcFunction).find())
                                 realType = "rRNA";
-                            else if (lcFunction.startsWith("trna"))
+                            else if (lcFunction.contains("trna"))
                                 realType = "tRNA";
                             else
                                 realType = "misc_RNA";
