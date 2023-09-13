@@ -20,7 +20,7 @@ import org.theseed.utils.BaseProcessor;
  * pom			pom version check
  * p3map		map genomes to identical-sequenced PATRIC genomes
  * functions	create a master list of all functions in CoreSEED
- *
+ * subCheck		validate the subsystem variant rules
  */
 public class App
 {
@@ -64,6 +64,9 @@ public class App
             break;
         case "functions" :
             processor = new FunctionProcessor();
+            break;
+        case "subCheck" :
+            processor = new SubsystemRuleCheckProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
