@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.CoreUtilities;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.proteins.RoleMap;
 import org.theseed.subsystems.core.CoreSubsystem;
 import org.theseed.utils.BaseProcessor;
@@ -49,9 +50,10 @@ import org.theseed.utils.ParseFailureException;
  * -h	display command-line usage
  * -v	display more frequent log messages
  *
- * --roles	role definition file to use (default is "roles.in.subsystems" in the CoreSEED data directory)
- * --clear	erase the output directory before starting
- * --all	if specified, bad subsystems with valid rules will be checked
+ * --roles		role definition file to use (default is "roles.in.subsystems" in the CoreSEED data directory)
+ * --clear		erase the output directory before starting
+ * --all		if specified, bad subsystems with valid rules will be checked
+ * --filter		if specified, a file of subsystem names; only the named subsystems will be checked
  *
  * In the bad-variant reports, the expected variant is the one in the spreadsheet.  The actual variant is the one predicted
  * by the rules.  A mismatch is considered serious if neither of the variant codes is negative, 0, or "dirty" and there are
@@ -66,6 +68,7 @@ import org.theseed.utils.ParseFailureException;
  * bad_roles	number of subsystem roles that are not found in CoreSEED
  * bad_variants	number of variants picked by the rules that do not match the spreadsheet; a blank here means no rules exist
  * serious		number of bad-variant cases considered serious
+ * invalid		number of invalid-variant cases (genomes with variant codes for which there is no rule)
  * bad_genomes	number of genome rows not found in CoreSEED
  *
  * @author Bruce Parrello
@@ -100,6 +103,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private PrintWriter errorWriter;
     /** output file for bad-id list */
     private PrintWriter badIdWriter;
+    /** list of subsystem names to check */
+    private Set<String> ssNames;
     /** list of feature types used in subsystems */
     private static final String[] FID_TYPES = new String[] { "opr", "aSDomain", "pbs", "rna", "rsw", "sRNA", "peg" };
     /** hash map size to use for genome maps */
@@ -121,6 +126,10 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     @Option(name = "--all", usage = "if specified, bad subsystems with valid rules will be checked")
     private boolean allFlag;
 
+    /** if specified, the name of a file containing subsystem names in the first column; only the named subsystems will be checked */
+    @Option(name = "--filter", metaVar = "ssNames.tbl", usage = "file of subsystem names to check (tab-separated with headers)")
+    private File filterFile;
+
     /** input coreSEED data directory */
     @Argument(index = 0, metaVar = "FIGdisk/FIG/Data", usage = "input CoreSEED data directory", required = true)
     private File coreDir;
@@ -134,6 +143,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         this.roleFile = null;
         this.clearFlag = false;
         this.allFlag = false;
+        this.filterFile = null;
     }
 
     @Override
@@ -156,6 +166,16 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         this.coreSeed = new CoreUtilities(orgDir);
         this.nameMap = new HashMap<String, String>(MAP_SIZE);
         this.coreGenomes = new TreeMap<String, Set<String>>();
+        // Check for a filter file.
+        if (this.filterFile == null) {
+            log.info("No subsystem filtering specified.");
+            this.ssNames = null;
+        } else {
+            log.info("Filter file {} specified.", this.filterFile);
+            if (! this.filterFile.canRead())
+                throw new FileNotFoundException("Filter file " + this.filterFile + " is not found or unreadable.");
+            this.ssNames = TabbedLineReader.readSet(this.filterFile, "1");
+        }
         // Set up the output directory.
         if (! this.outDir.isDirectory()) {
             log.info("Creating output directory {}.", this.outDir);
@@ -188,7 +208,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             this.errorWriter = new PrintWriter(new File(this.outDir, "errors.tbl"));
             this.badIdWriter = new PrintWriter(new File(this.outDir, "badIds.tbl"));
             // Write the header lines.
-            this.mainWriter.println("Subsystem\troles\tgenomes\tbad_ids\tbad_roles\tbad_variants\tserious\tbad_genomes");
+            this.mainWriter.println("Subsystem\troles\tgenomes\tbad_ids\tbad_roles\tbad_variants\tserious\tinvalid\tbad_genomes");
             this.badVariantDetailWriter.println("Subsystem\tgood\tgenome_id\texpected\tactual");
             this.badVariantSummaryWriter.println("Subsystem\tgood\tbad_ids\texpected\tactual\tcount");
             this.invalidVariantSummaryWriter.println("Subsystem\tgood\tbad_ids\tinvalid\tactual\tcount");
@@ -213,22 +233,26 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             int badSystems = 0;
             int goodSystems = 0;
             for (File subDir : this.subDirs) {
-                CoreSubsystem subsystem = null;
-                try {
-                    subsystem = new CoreSubsystem(subDir, roleMap);
-                    if (! subsystem.isGood() && ! allFlag) {
-                        log.info("Skipping subsystem {}.", subsystem.getName());
+                // Compute the subsystem name and check the filter.
+                String subName = CoreSubsystem.dirToName(subDir);
+                if (this.ssNames == null || this.ssNames.contains(subName)) {
+                    CoreSubsystem subsystem = null;
+                    try {
+                        subsystem = new CoreSubsystem(subDir, roleMap);
+                        if (! subsystem.isGood() && ! allFlag) {
+                            log.info("Skipping subsystem {}.", subsystem.getName());
+                            badSystems++;
+                        } else {
+                            goodSystems++;
+                            this.processSubsystem(subsystem);
+                        }
+                    } catch (ParseFailureException e) {
+                        String message = e.getMessage();
+                        log.error("Error in {}: {}", subDir, e.getMessage());
                         badSystems++;
-                    } else {
-                        goodSystems++;
-                        this.processSubsystem(subsystem);
+                        String name = CoreSubsystem.dirToName(subDir);
+                        this.errorWriter.println(name + "\t" + message);
                     }
-                } catch (ParseFailureException e) {
-                    String message = e.getMessage();
-                    log.error("Error in {}: {}", subDir, e.getMessage());
-                    badSystems++;
-                    String name = CoreSubsystem.dirToName(subDir);
-                    this.errorWriter.println(name + "\t" + message);
                 }
             }
             log.info("{} good subsystems, {} bad subsystems.", goodSystems, badSystems);
@@ -268,6 +292,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         // just note the lack of rules.
         String variantIndicator = "";
         String seriousIndicator = "";
+        String invalidIndicator = "";
         if (! subsystem.hasRules()) {
             // Here there are no rules, so none of the variants will match.  List the subsystem.
             this.missingRulesWriter.println(subName + "\t" + subsystem.getVersion() + "\t"
@@ -276,6 +301,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         } else {
             int badVariants = 0;
             int serious = 0;
+            int invalid = 0;
             for (var genomeEntry : this.coreGenomes.entrySet()) {
                 String genomeId = genomeEntry.getKey();
                 Set<String> roleSet = genomeEntry.getValue();
@@ -291,6 +317,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                         if (! subsystem.isRuleVariant(expected)) {
                             // Here no rule exists for the expected variant.
                             iCountMap.count(key);
+                            invalid++;
                         } else {
                             // Here we have the wrong rule matching.
                             badVariants++;
@@ -307,11 +334,12 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             }
             variantIndicator = Integer.toString(badVariants);
             seriousIndicator = Integer.toString(serious);
+            invalidIndicator = Integer.toString(invalid);
         }
         this.mainWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" +
                 subsystem.getRowGenomes().size() + "\t" + badIdCount + "\t" +
                 subsystem.getBadRoleCount() + "\t" + variantIndicator + "\t" +
-                seriousIndicator + "\t" + badGenomes);
+                seriousIndicator + "\t" + invalidIndicator + "\t" + badGenomes);
         // Run through the mismatch counts.
         this.writeCountSummary(countMap, subsystem, this.badVariantSummaryWriter);
         this.writeCountSummary(iCountMap, subsystem, this.invalidVariantSummaryWriter);
