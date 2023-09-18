@@ -57,7 +57,8 @@ import org.theseed.utils.ParseFailureException;
  *
  * In the bad-variant reports, the expected variant is the one in the spreadsheet.  The actual variant is the one predicted
  * by the rules.  A mismatch is considered serious if neither of the variant codes is negative, 0, or "dirty" and there are
- * no bad identifiers.
+ * no bad identifiers.  For a serious mismatch, an analysis of the roles that participated in the decision will be displayed
+ * in comma-delimited form with a slash.  The roles before the slash were found, and the roles after were not found.
  *
  * The main output report has the following columns.
  *
@@ -105,8 +106,6 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private PrintWriter badIdWriter;
     /** list of subsystem names to check */
     private Set<String> ssNames;
-    /** list of feature types used in subsystems */
-    private static final String[] FID_TYPES = new String[] { "opr", "aSDomain", "pbs", "rna", "rsw", "sRNA", "peg" };
     /** hash map size to use for genome maps */
     private static final int MAP_SIZE = 2000;
     /** pattern for variant codes that generally indicate an inactive subsystem */
@@ -209,7 +208,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             this.badIdWriter = new PrintWriter(new File(this.outDir, "badIds.tbl"));
             // Write the header lines.
             this.mainWriter.println("Subsystem\troles\tgenomes\tbad_ids\tbad_roles\tbad_variants\tserious\tinvalid\tbad_genomes");
-            this.badVariantDetailWriter.println("Subsystem\tgood\tgenome_id\texpected\tactual");
+            this.badVariantDetailWriter.println("Subsystem\tgood\tgenome_id\texpected\tactual\texpected_roles\tactual_roles");
             this.badVariantSummaryWriter.println("Subsystem\tgood\tbad_ids\texpected\tactual\tcount");
             this.invalidVariantSummaryWriter.println("Subsystem\tgood\tbad_ids\tinvalid\tactual\tcount");
             this.missingRulesWriter.println("Subsystem\tversion\tsuperclass\tclass\tsubclass\tgood");
@@ -220,7 +219,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                 String genomeName = this.coreSeed.getGenomeName(genomeId);
                 log.info("Processing role set for {}: {}.", genomeId, genomeName);
                 this.nameMap.put(genomeId, genomeName);
-                var functionMap = this.coreSeed.getGenomeFunctions(genomeId, FID_TYPES);
+                var functionMap = this.coreSeed.getGenomeFunctions(genomeId, CoreSubsystem.FID_TYPES);
                 // Now loop through the function map building the role set.
                 Set<String> roleSet = new HashSet<String>(MAP_SIZE);
                 for (String function : functionMap.values())
@@ -271,8 +270,10 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
      * Validate the rules for the specified subsystem.
      *
      * @param subsystem		subsystem to check
+     *
+     * @throws ParseFailureException
      */
-    private void processSubsystem(CoreSubsystem subsystem) {
+    private void processSubsystem(CoreSubsystem subsystem) throws ParseFailureException {
         // These hashes count the variant-mismatch pairs.  Each pair is keyed on expected + \t + actual.
         // The iCountMap counts only those where the expected variant does not have a rule.
         CountMap<String> countMap = new CountMap<String>();
@@ -325,7 +326,12 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                             // If it's serious, write it to the detail file.
                             if (badIdCount == 0 && ! (INACTIVE_CODE.matcher(expected).matches() &&
                                     INACTIVE_CODE.matcher(actual).matches())) {
-                                this.badVariantDetailWriter.println(subName + "\t" + goodFlag + "\t" + genomeId + "\t" + key);
+                                // Analyze the expected and actual variant rules.
+                                String expectedAnalysis = subsystem.analyzeRule(expected, roleSet);
+                                String actualAnalysis = subsystem.analyzeRule(actual, roleSet);
+                                // Write the detail line.
+                                this.badVariantDetailWriter.println(subName + "\t" + goodFlag + "\t" + genomeId + "\t" + key
+                                        + "\t" + expectedAnalysis + "\t" + actualAnalysis);
                                 serious++;
                             }
                         }

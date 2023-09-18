@@ -21,6 +21,7 @@ import org.theseed.utils.BaseProcessor;
  * p3map		map genomes to identical-sequenced PATRIC genomes
  * functions	create a master list of all functions in CoreSEED
  * subCheck		validate the subsystem variant rules
+ * subRoles		process the bad-variants report and check for role-name mismatches
  */
 public class App
 {
@@ -67,6 +68,9 @@ public class App
             break;
         case "subCheck" :
             processor = new SubsystemRuleCheckProcessor();
+            break;
+        case "subRoles" :
+            processor = new SubsystemRoleCheckProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
