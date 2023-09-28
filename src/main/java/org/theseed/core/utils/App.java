@@ -22,6 +22,7 @@ import org.theseed.utils.BaseProcessor;
  * functions	create a master list of all functions in CoreSEED
  * subCheck		validate the subsystem variant rules
  * subRoles		process the bad-variants report and check for role-name mismatches
+ * synonyms		produces a report on synonyms in the CoreSEED functions
  */
 public class App
 {
@@ -71,6 +72,9 @@ public class App
             break;
         case "subRoles" :
             processor = new SubsystemRoleCheckProcessor();
+            break;
+        case "synonyms" :
+            processor = new SynonymReportProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
