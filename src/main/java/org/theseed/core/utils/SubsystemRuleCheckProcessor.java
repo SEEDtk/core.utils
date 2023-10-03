@@ -422,7 +422,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                     // Here we have a role in the subsystem.
                     roleSet.add(roleId);
                     // Check for strict matching.
-                    if (subsystem.isExactRole(roleString))
+                    if (subsystem.isExactRole(roleId, roleString))
                         strictRoleSet.add(roleId);
                     else if (! this.mismatchSet.contains(peg)) {
                         // Here we have a new mismatch for the mismatch report.
