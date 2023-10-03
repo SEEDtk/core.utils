@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -118,6 +119,10 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private Set<String> mismatchSet;
     /** number of subsystems processed */
     private int subCount;
+    /** total number of subsystems to process */
+    private int subTotal;
+    /** start time of first subsystem */
+    private long subStart;
     /** hash map size to use for genome maps */
     private static final int MAP_SIZE = 2000;
     /** pattern for variant codes that generally indicate an inactive subsystem */
@@ -182,11 +187,13 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         if (this.filterFile == null) {
             log.info("No subsystem filtering specified.");
             this.ssNames = null;
+            this.subTotal = this.subDirs.size();
         } else {
             log.info("Filter file {} specified.", this.filterFile);
             if (! this.filterFile.canRead())
                 throw new FileNotFoundException("Filter file " + this.filterFile + " is not found or unreadable.");
             this.ssNames = TabbedLineReader.readSet(this.filterFile, "1");
+            this.subTotal = this.ssNames.size();
         }
         // Set up the output directory.
         if (! this.outDir.isDirectory()) {
@@ -237,6 +244,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             int badSystems = 0;
             int goodSystems = 0;
             this.subCount = 0;
+            this.subStart = System.currentTimeMillis();
             for (File subDir : this.subDirs) {
                 // Compute the subsystem name and check the filter.
                 String subName = CoreSubsystem.dirToName(subDir);
@@ -300,7 +308,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         final int badIdCount = subsystem.getBadIdCount();
         // Loop through the rows, verifying the genome IDs.
         this.subCount++;
-        log.info("Validating subsystem {} of {}: {}.", this.subCount, this.subDirs.size(), subName);
+        log.info("Validating subsystem {} of {}: {}.", this.subCount, this.subTotal, subName);
         int badGenomes = 0;
         for (String rowGenomeId : subsystem.getRowGenomes()) {
             if (! this.coreGenomes.containsKey(rowGenomeId))
@@ -394,6 +402,12 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         if (badIdCount > 0) {
             String badIdString = StringUtils.join(subsystem.getBadIds(), ", ");
             this.badIdWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" + goodFlag + "\t" + badIdString);
+        }
+        if (log.isInfoEnabled()) {
+            int subsLeft = this.subTotal - this.subCount;
+            Duration effort = Duration.ofMillis(System.currentTimeMillis() - this.subStart).dividedBy(subCount);
+            Duration rem = effort.multipliedBy(subsLeft);
+            log.info("{} subsystems completed.  {} per subsystem, {} time remaining.", this.subCount, effort, rem);
         }
     }
 
