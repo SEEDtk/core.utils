@@ -120,10 +120,14 @@ public class SynonymReportProcessor extends BaseMultiReportProcessor {
             for (String roleId : sortedRoleIds) {
                 // Get the role's count map.
                 CountMap<String> countMap = this.synonymCounts.get(roleId);
-                for (var roleNameEntry : countMap.sortedCounts()) {
-                    String roleName = roleNameEntry.getKey();
-                    int count = roleNameEntry.getCount();
-                    synWriter.println(roleId + "\t" + roleName + "\t" + count);
+                var counts = countMap.sortedCounts();
+                // Only print if there is a synonym.
+                if (counts.size() > 1) {
+                    for (var roleNameEntry : countMap.sortedCounts()) {
+                        String roleName = roleNameEntry.getKey();
+                        int count = roleNameEntry.getCount();
+                        synWriter.println(roleId + "\t" + roleName + "\t" + count);
+                    }
                 }
             }
             // Now we need to get all of the role names sorted by count.

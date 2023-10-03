@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -44,6 +45,7 @@ import org.theseed.utils.ParseFailureException;
  * errors.tbl			list of subsystems with invalid rules
  * ivSummary.tbl		summary of the expected variant codes for which no rule exists
  * badIdList.tbl		list of bad rule identifiers for each subsystem
+ * mismatch.tbl			list of features that cause bad variants because the role definition does not match the subsystem's
  *
  * The command-line options are as follows:
  *
@@ -56,9 +58,10 @@ import org.theseed.utils.ParseFailureException;
  * --filter		if specified, a file of subsystem names; only the named subsystems will be checked
  *
  * In the bad-variant reports, the expected variant is the one in the spreadsheet.  The actual variant is the one predicted
- * by the rules.  A mismatch is considered serious if neither of the variant codes is negative, 0, or "dirty" and there are
- * no bad identifiers.  For a serious mismatch, an analysis of the roles that participated in the decision will be displayed
- * in comma-delimited form with a slash.  The roles before the slash were found, and the roles after were not found.
+ * by the rules.  A mismatch is considered serious if neither of the variant codes is negative, 0, or "dirty", there are
+ * no bad identifiers, and there are no role name mismatches.  For a serious mismatch, an analysis of the roles that
+ * participated in the decision will be displayed in comma-delimited form with a slash.  The roles before the slash were
+ * found, and the roles after were not found.
  *
  * The main output report has the following columns.
  *
@@ -70,6 +73,7 @@ import org.theseed.utils.ParseFailureException;
  * bad_variants	number of variants picked by the rules that do not match the spreadsheet; a blank here means no rules exist
  * serious		number of bad-variant cases considered serious
  * invalid		number of invalid-variant cases (genomes with variant codes for which there is no rule)
+ * mismatch		number of mismatches due to changed role names
  * bad_genomes	number of genome rows not found in CoreSEED
  *
  * @author Bruce Parrello
@@ -80,8 +84,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     // FIELDS
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(SubsystemRuleCheckProcessor.class);
-    /** map of genome IDs to role sets */
-    private Map<String, Set<String>> coreGenomes;
+    /** map of genome IDs to function maps */
+    private Map<String, Map<String, String>> coreGenomes;
     /** master role map */
     private RoleMap roleMap;
     /** list of subsystem directories */
@@ -100,12 +104,18 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private PrintWriter badVariantSummaryWriter;
     /** output file for invalid-variant-code summary */
     private PrintWriter invalidVariantSummaryWriter;
+    /** mismatch role definition list */
+    private PrintWriter mismatchRoleWriter;
     /** output file for compile-error summary */
     private PrintWriter errorWriter;
     /** output file for bad-id list */
     private PrintWriter badIdWriter;
+    /** list of active print writers */
+    private List<PrintWriter> writerList;
     /** list of subsystem names to check */
     private Set<String> ssNames;
+    /** set of mismatched-role features already found */
+    private Set<String> mismatchSet;
     /** hash map size to use for genome maps */
     private static final int MAP_SIZE = 2000;
     /** pattern for variant codes that generally indicate an inactive subsystem */
@@ -164,7 +174,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         log.info("Connecting to organism directory {}.", orgDir);
         this.coreSeed = new CoreUtilities(orgDir);
         this.nameMap = new HashMap<String, String>(MAP_SIZE);
-        this.coreGenomes = new TreeMap<String, Set<String>>();
+        this.coreGenomes = new TreeMap<String, Map<String, String>>();
+        this.mismatchSet = new HashSet<String>(MAP_SIZE);
         // Check for a filter file.
         if (this.filterFile == null) {
             log.info("No subsystem filtering specified.");
@@ -185,13 +196,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         } else
             log.info("Output reports will be produced in {}.", this.outDir);
         // Insure the writers are all marked unopened.
-        this.mainWriter = null;
-        this.badVariantDetailWriter = null;
-        this.badVariantSummaryWriter = null;
-        this.missingRulesWriter = null;
-        this.errorWriter = null;
-        this.invalidVariantSummaryWriter = null;
-        this.badIdWriter = null;
+        this.writerList = new ArrayList<PrintWriter>();
         return true;
     }
 
@@ -199,33 +204,31 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     protected void runCommand() throws Exception {
         try {
             // Set up the output files.
-            this.mainWriter = new PrintWriter(new File(this.outDir, "subReport.tbl"));
-            this.badVariantDetailWriter = new PrintWriter(new File(this.outDir, "badVariants.tbl"));
-            this.badVariantSummaryWriter = new PrintWriter(new File(this.outDir, "bvSummary.tbl"));
-            this.invalidVariantSummaryWriter = new PrintWriter(new File(this.outDir, "ivSummary.tbl"));
-            this.missingRulesWriter = new PrintWriter(new File(this.outDir, "missing.tbl"));
-            this.errorWriter = new PrintWriter(new File(this.outDir, "errors.tbl"));
-            this.badIdWriter = new PrintWriter(new File(this.outDir, "badIds.tbl"));
+            this.mainWriter = this.openWriter("subReport.tbl");
+            this.badVariantDetailWriter = this.openWriter("badVariants.tbl");
+            this.badVariantSummaryWriter = this.openWriter("bvSummary.tbl");
+            this.invalidVariantSummaryWriter = this.openWriter("ivSummary.tbl");
+            this.missingRulesWriter = this.openWriter("missing.tbl");
+            this.errorWriter = this.openWriter("errors.tbl");
+            this.badIdWriter = this.openWriter("badIds.tbl");
+            this.mismatchRoleWriter = this.openWriter("mismatch.tbl");
             // Write the header lines.
-            this.mainWriter.println("Subsystem\troles\tgenomes\tbad_ids\tbad_roles\tbad_variants\tserious\tinvalid\tbad_genomes");
+            this.mainWriter.println("Subsystem\troles\tgenomes\tbad_ids\tbad_roles\tbad_variants\tserious\tinvalid\tmismatch\tbad_genomes");
             this.badVariantDetailWriter.println("Subsystem\tgood\tgenome_id\texpected\tactual\texpected_roles\tactual_roles");
             this.badVariantSummaryWriter.println("Subsystem\tgood\tbad_ids\texpected\tactual\tcount");
             this.invalidVariantSummaryWriter.println("Subsystem\tgood\tbad_ids\tinvalid\tactual\tcount");
             this.missingRulesWriter.println("Subsystem\tversion\tsuperclass\tclass\tsubclass\tgood");
             this.errorWriter.println("Subsystem\terror_message");
             this.badIdWriter.println("Subsystem\troles\tgood\tbad_ids");
-            // We start by creating a role set for each genome.
+            this.mismatchRoleWriter.println("feature_id\tactual_role\tsubsystem_role");
+            // We start by creating a functional-assignment map for each genome.
             for (String genomeId : this.coreSeed.getGenomes()) {
                 String genomeName = this.coreSeed.getGenomeName(genomeId);
                 log.info("Processing role set for {}: {}.", genomeId, genomeName);
                 this.nameMap.put(genomeId, genomeName);
                 var functionMap = this.coreSeed.getGenomeFunctions(genomeId, CoreSubsystem.FID_TYPES);
-                // Now loop through the function map building the role set.
-                Set<String> roleSet = new HashSet<String>(MAP_SIZE);
-                for (String function : functionMap.values())
-                    Feature.usefulRoles(roleMap, function).stream().forEach(x -> roleSet.add(x.getId()));
-                this.coreGenomes.put(genomeId, roleSet);
-                log.info("{} useful roles found in {}.", roleSet.size(), genomeId);
+                this.coreGenomes.put(genomeId, functionMap);
+                log.info("{} functions found in {}.", functionMap.size(), genomeId);
             }
             // Now we process the subsystems.
             log.info("Processing subsystems.");
@@ -244,6 +247,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                         } else {
                             goodSystems++;
                             this.processSubsystem(subsystem);
+                            // Flush all the output streams.
+                            this.writerList.stream().forEach(x -> x.flush());
                         }
                     } catch (ParseFailureException e) {
                         String message = e.getMessage();
@@ -256,14 +261,22 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             }
             log.info("{} good subsystems, {} bad subsystems.", goodSystems, badSystems);
         } finally {
-            if (this.mainWriter != null) this.mainWriter.close();
-            if (this.badVariantDetailWriter != null) this.badVariantDetailWriter.close();
-            if (this.badVariantSummaryWriter != null) this.badVariantSummaryWriter.close();
-            if (this.invalidVariantSummaryWriter != null) this.invalidVariantSummaryWriter.close();
-            if (this.missingRulesWriter != null) this.missingRulesWriter.close();
-            if (this.errorWriter != null) this.errorWriter.close();
-            if (this.badIdWriter != null) this.badIdWriter.close();
+            // Close all the print writers.
+            this.writerList.stream().forEach(x -> x.close());
         }
+    }
+
+    /**
+     * @return a writer for the specified output file
+     *
+     * @param fileName	output file base name
+     *
+     * @throws FileNotFoundException
+     */
+    private PrintWriter openWriter(String fileName) throws FileNotFoundException {
+        PrintWriter retVal = new PrintWriter(new File(this.outDir, fileName));
+        this.writerList.add(retVal);
+        return retVal;
     }
 
     /**
@@ -294,6 +307,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         String variantIndicator = "";
         String seriousIndicator = "";
         String invalidIndicator = "";
+        String mismatchIndicator = "";
         if (! subsystem.hasRules()) {
             // Here there are no rules, so none of the variants will match.  List the subsystem.
             this.missingRulesWriter.println(subName + "\t" + subsystem.getVersion() + "\t"
@@ -303,12 +317,18 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             int badVariants = 0;
             int serious = 0;
             int invalid = 0;
+            int mismatches = 0;
+            int gCount = 0;
+            long lastMessage = System.currentTimeMillis();
             for (var genomeEntry : this.coreGenomes.entrySet()) {
                 String genomeId = genomeEntry.getKey();
-                Set<String> roleSet = genomeEntry.getValue();
+                Map<String, String> functionMap = genomeEntry.getValue();
                 // Do we have this genome?
                 String expected = subsystem.variantOf(genomeId);
                 if (expected != null) {
+                    Set<String> roleSet = new HashSet<String>(functionMap.size());
+                    Set<String> strictRoleSet = new HashSet<String>(functionMap.size());
+                    this.computeRoleSets(subsystem, roleSet, strictRoleSet, functionMap);
                     String actual = subsystem.applyRules(roleSet);
                     if (actual == null) actual = "-1";
                     if (! StringUtils.equals(actual, expected)) {
@@ -323,10 +343,15 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                             // Here we have the wrong rule matching.
                             badVariants++;
                             countMap.count(key);
-                            // If it's serious, write it to the detail file.
-                            if (badIdCount == 0 && ! (INACTIVE_CODE.matcher(expected).matches() &&
+                            // Check for role-mismatch situation.
+                            String strict = subsystem.applyRules(strictRoleSet);
+                            if (strict == null) strict = "-1";
+                            if (StringUtils.equals(strict, expected)) {
+                                mismatches++;
+                            } else if (badIdCount == 0 && ! (INACTIVE_CODE.matcher(expected).matches() &&
                                     INACTIVE_CODE.matcher(actual).matches())) {
-                                // Analyze the expected and actual variant rules.
+                                // Here it's serious, so we need to write it to the detail file. Analyze the expected
+                                // and actual variant rules.
                                 String expectedAnalysis = subsystem.analyzeRule(expected, roleSet);
                                 String actualAnalysis = subsystem.analyzeRule(actual, roleSet);
                                 // Write the detail line.
@@ -337,15 +362,27 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                         }
                     }
                 }
+                gCount++;
+                if (log.isInfoEnabled()) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastMessage >= 5000) {
+                        lastMessage = now;
+                        log.info("{} genomes processed.  {} bad variants, {} serious, {} mismatches.",
+                                gCount, badVariants, serious, mismatches);
+                    }
+                }
             }
             variantIndicator = Integer.toString(badVariants);
             seriousIndicator = Integer.toString(serious);
             invalidIndicator = Integer.toString(invalid);
+            mismatchIndicator = Integer.toString(mismatches);
+            log.info("{} genomes processed.  {} bad variants, {} serious, {} mismatches.",
+                    gCount, badVariants, serious, mismatches);
         }
         this.mainWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" +
                 subsystem.getRowGenomes().size() + "\t" + badIdCount + "\t" +
                 subsystem.getBadRoleCount() + "\t" + variantIndicator + "\t" +
-                seriousIndicator + "\t" + invalidIndicator + "\t" + badGenomes);
+                seriousIndicator + "\t" + invalidIndicator + "\t" + mismatchIndicator + "\t" + badGenomes);
         // Run through the mismatch counts.
         this.writeCountSummary(countMap, subsystem, this.badVariantSummaryWriter);
         this.writeCountSummary(iCountMap, subsystem, this.invalidVariantSummaryWriter);
@@ -354,6 +391,45 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             String badIdString = StringUtils.join(subsystem.getBadIds(), ", ");
             this.badIdWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" + goodFlag + "\t" + badIdString);
         }
+    }
+
+    /**
+     * Compute the standard and strict role sets for this genome with respect to the specified subsystem.
+     * The standard role set uses the role map.  The strict role set does not allow synonuyms.
+     *
+     * @param subsystem			subsystem in question
+     * @param roleSet			output standard role set
+     * @param strictRoleSet		output strict role set
+     * @param functionMap		map of genome IDs to functional assignments
+     */
+    private void computeRoleSets(CoreSubsystem subsystem, Set<String> roleSet, Set<String> strictRoleSet,
+            Map<String, String> functionMap) {
+        // Loop through the function map, extracting individual roles.  For each role, we decide its
+        // ID and add to the role set.  If the subsystem's role name does not match, we leave it out of
+        // the strict set.
+        for (var functionEntry : functionMap.entrySet()) {
+            String peg = functionEntry.getKey();
+            String functionString = functionEntry.getValue();
+            String[] roleStrings = Feature.rolesOfFunction(functionString);
+            for (String roleString : roleStrings) {
+                // Get the role ID.
+                String roleId = subsystem.getRoleId(roleString);
+                if (roleId != null) {
+                    // Here we have a role in the subsystem.
+                    roleSet.add(roleId);
+                    // Check for strict matching.
+                    if (subsystem.isExactRole(roleString))
+                        strictRoleSet.add(roleId);
+                    else if (! this.mismatchSet.contains(peg)) {
+                        // Here we have a new mismatch for the mismatch report.
+                        this.mismatchSet.contains(peg);
+                        this.mismatchRoleWriter.println(peg + "\t" + roleString + "\t" + subsystem.getExpectedRole(roleId));
+                    }
+                }
+            }
+        }
+
+
     }
 
     /**
