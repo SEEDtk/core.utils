@@ -44,7 +44,7 @@ import org.theseed.utils.ParseFailureException;
  * missing.tbl			list of subsystems with missing rules
  * errors.tbl			list of subsystems with invalid rules
  * ivSummary.tbl		summary of the expected variant codes for which no rule exists
- * badIdList.tbl		list of bad rule identifiers for each subsystem
+ * badIds.tbl			list of bad rule identifiers for each subsystem
  * mismatch.tbl			list of features that cause bad variants because the role definition does not match the subsystem's
  *
  * The command-line options are as follows:
