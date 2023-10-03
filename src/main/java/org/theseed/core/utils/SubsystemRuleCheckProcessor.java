@@ -116,6 +116,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private Set<String> ssNames;
     /** set of mismatched-role features already found */
     private Set<String> mismatchSet;
+    /** number of subsystems processed */
+    private int subCount;
     /** hash map size to use for genome maps */
     private static final int MAP_SIZE = 2000;
     /** pattern for variant codes that generally indicate an inactive subsystem */
@@ -234,6 +236,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             log.info("Processing subsystems.");
             int badSystems = 0;
             int goodSystems = 0;
+            this.subCount = 0;
             for (File subDir : this.subDirs) {
                 // Compute the subsystem name and check the filter.
                 String subName = CoreSubsystem.dirToName(subDir);
@@ -296,7 +299,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         final String goodFlag = subsystem.isGood() ? "Y" : "";
         final int badIdCount = subsystem.getBadIdCount();
         // Loop through the rows, verifying the genome IDs.
-        log.info("Validating subsystem {}.", subName);
+        this.subCount++;
+        log.info("Validating subsystem {} of {}: {}.", this.subCount, this.subDirs.size(), subName);
         int badGenomes = 0;
         for (String rowGenomeId : subsystem.getRowGenomes()) {
             if (! this.coreGenomes.containsKey(rowGenomeId))
