@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.FileUtils;
@@ -47,6 +48,7 @@ import org.theseed.utils.ParseFailureException;
  * ivSummary.tbl		summary of the expected variant codes for which no rule exists
  * badIds.tbl			list of bad rule identifiers for each subsystem
  * mismatch.tbl			list of features that cause bad variants because the role definition does not match the subsystem's
+ * oldCodes.tbl			list of subsystems with old-style variant codes
  *
  * The command-line options are as follows:
  *
@@ -111,6 +113,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private PrintWriter errorWriter;
     /** output file for bad-id list */
     private PrintWriter badIdWriter;
+    /** output file for old-codes list */
+    private PrintWriter oldCodeWriter;
     /** list of active print writers */
     private List<PrintWriter> writerList;
     /** list of subsystem names to check */
@@ -127,6 +131,8 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private static final int MAP_SIZE = 2000;
     /** pattern for variant codes that generally indicate an inactive subsystem */
     private static final Pattern INACTIVE_CODE = Pattern.compile("-.*|0.*|dirty.*");
+    /** pattern for variant codes that are old-style */
+    private static final Pattern NEW_CODE = Pattern.compile("0|-1|dirty.*|likely.*|lookat.*|active.*|inactive.*");
 
     // COMMAND-LINE OPTIONS
 
@@ -221,6 +227,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             this.errorWriter = this.openWriter("errors.tbl");
             this.badIdWriter = this.openWriter("badIds.tbl");
             this.mismatchRoleWriter = this.openWriter("mismatch.tbl");
+            this.oldCodeWriter = this.openWriter("oldCodes.tbl");
             // Write the header lines.
             this.mainWriter.println("Subsystem\troles\tgenomes\tbad_ids\tbad_roles\tbad_variants\tserious\tinvalid\tmismatch\tbad_genomes");
             this.badVariantDetailWriter.println("Subsystem\tgood\tgenome_id\texpected\tactual\texpected_roles\tactual_roles");
@@ -230,6 +237,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             this.errorWriter.println("Subsystem\terror_message");
             this.badIdWriter.println("Subsystem\troles\tgood\tbad_ids");
             this.mismatchRoleWriter.println("feature_id\tactual_role\tsubsystem_role");
+            this.oldCodeWriter.println("Subsystem\troles\tactive_genomes\tgood\ttotal_codes\told_codes");
             // We start by creating a functional-assignment map for each genome.
             for (String genomeId : this.coreSeed.getGenomes()) {
                 String genomeName = this.coreSeed.getGenomeName(genomeId);
@@ -306,13 +314,25 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         final String subName = subsystem.getName();
         final String goodFlag = subsystem.isGood() ? "Y" : "";
         final int badIdCount = subsystem.getBadIdCount();
-        // Loop through the rows, verifying the genome IDs.
+        // Loop through the rows, verifying the genome IDs and variant codes.
         this.subCount++;
         log.info("Validating subsystem {} of {}: {}.", this.subCount, this.subTotal, subName);
         int badGenomes = 0;
+        int activeGenomes = 0;
+        Set<String> newCodes = new TreeSet<String>();
+        Set<String> oldCodes = new TreeSet<String>();
         for (String rowGenomeId : subsystem.getRowGenomes()) {
+            // Check for a bad genome ID.
             if (! this.coreGenomes.containsKey(rowGenomeId))
                 badGenomes++;
+            // Check for an old variant code.
+            String code = subsystem.variantOf(rowGenomeId);
+            if (! INACTIVE_CODE.matcher(code).matches())
+                activeGenomes++;
+            if (NEW_CODE.matcher(code).matches())
+                newCodes.add(code);
+            else
+                oldCodes.add(code);
         }
         // Loop through the genomes, checking them against the subsystem.  If there are no rules, we
         // just note the lack of rules.
@@ -391,10 +411,18 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             log.info("{} genomes processed.  {} bad variants, {} serious, {} mismatches.",
                     gCount, badVariants, serious, mismatches);
         }
+        // Write the main-report summary line.
         this.mainWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" +
                 subsystem.getRowGenomes().size() + "\t" + badIdCount + "\t" +
                 subsystem.getBadRoleCount() + "\t" + variantIndicator + "\t" +
                 seriousIndicator + "\t" + invalidIndicator + "\t" + mismatchIndicator + "\t" + badGenomes);
+        // If there are old codes, write a summary to the old-code report.
+        if (! oldCodes.isEmpty()) {
+            int totCodeCount = oldCodes.size() + newCodes.size();
+            String oldCodeString = StringUtils.join(oldCodes, ", ");
+            this.oldCodeWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" + activeGenomes + "\t" + goodFlag
+                    + "\t" + totCodeCount + "\t" + oldCodeString);
+        }
         // Run through the mismatch counts.
         this.writeCountSummary(countMap, subsystem, this.badVariantSummaryWriter);
         this.writeCountSummary(iCountMap, subsystem, this.invalidVariantSummaryWriter);
