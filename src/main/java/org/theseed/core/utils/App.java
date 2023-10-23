@@ -23,6 +23,7 @@ import org.theseed.utils.BaseProcessor;
  * subCheck		validate the subsystem variant rules
  * subRoles		process the bad-variants report and check for role-name mismatches
  * synonyms		produces a report on synonyms in the CoreSEED functions
+ * subDump		dump all of the subsystems in CoreSEED into JSON list directories
  */
 public class App
 {
@@ -75,6 +76,9 @@ public class App
             break;
         case "synonyms" :
             processor = new SynonymReportProcessor();
+            break;
+        case "subDump" :
+            processor = new SubsystemDumpProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
