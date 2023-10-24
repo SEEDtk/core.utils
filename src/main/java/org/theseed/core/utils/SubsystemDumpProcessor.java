@@ -9,6 +9,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
+import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.kohsuke.args4j.Argument;
@@ -16,7 +18,9 @@ import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.proteins.RoleMap;
+import org.theseed.subsystems.VariantId;
 import org.theseed.subsystems.core.CoreSubsystem;
+import org.theseed.subsystems.core.SubsystemRule;
 import org.theseed.utils.BaseMultiReportProcessor;
 import org.theseed.utils.ParseFailureException;
 
@@ -169,18 +173,84 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
      *
      * @param outDir		output directory name
      * @param subsystem		subsystem data structure
+     *
+     * @throws JsonException
+     * @throws IOException
      */
-    private void writeVariantFile(File outDir, CoreSubsystem subsystem) {
-        // TODO write the variant data to variants.json
+    private void writeVariantFile(File outDir, CoreSubsystem subsystem) throws IOException, JsonException {
+        JsonArray outJson = new JsonArray();
+        // Get the variant notes.
+        var vNoteMap = subsystem.getVariantNotes();
+        // Loop through the variants.
+        Set<String> variantCodes = subsystem.getVariantCodes();
+        for (String variantCode : variantCodes) {
+            JsonObject variantJson = new JsonObject();
+            variantJson.put("variant_code", variantCode);
+            // Compute the code type here.
+            String type = "inactive";
+            if (VariantId.isLikely(variantCode))
+                type = "likely";
+            else if (VariantId.isActive(variantCode))
+                type = "active";
+            variantJson.put("variant_type", type);
+            // Add a rule if we have one.
+            SubsystemRule vRule = subsystem.getRule(variantCode);
+            if (vRule != null)
+                variantJson.put("variant_rule", vRule.toString());
+            String description = vNoteMap.getOrDefault(variantCode, "");
+            variantJson.put("description", description);
+            // Get the variant's genome list.
+            JsonArray genomes = new JsonArray();
+            genomes.addAll(subsystem.getVariantGenomes(variantCode));
+            variantJson.put("genomes", genomes);
+            // Save this variant in the result list.
+            outJson.add(variantJson);
+        }
+        // Write the variant file.
+        this.writeJson(outJson, outDir, "variants.json");
     }
+
     /**
      * This method writes a file containing the spreadsheet cell data.
      *
      * @param outDir		output directory name
      * @param subsystem		subsystem data structure
+     *
+     * @throws JsonException
+     * @throws IOException
      */
-    private void writeSpreadsheetFile(File outDir, CoreSubsystem subsystem) {
-        // TODO write the spreadsheet data to subsystem_ref.json
+    private void writeSpreadsheetFile(File outDir, CoreSubsystem subsystem) throws IOException, JsonException {
+        // Each record in this file represents a feature / subsystem connection.
+        // We find this data in the rows.
+        JsonArray outJson = new JsonArray();
+        var iter = subsystem.rowIterator();
+        while (iter.hasNext()) {
+            CoreSubsystem.Row row = iter.next();
+            // Save the genome ID and variant code.
+            String genomeId = row.getGenomeId();
+            String variantCode = row.getVariantCode();
+            // Loop through the columns.
+            List<Set<String>> columns = row.getColumns();
+            for (int i = 0; i < columns.size(); i++) {
+                Set<String> fids = columns.get(i);
+                if (! fids.isEmpty()) {
+                    // Get the role data.
+                    String role = subsystem.getRole(i);
+                    String abbr = subsystem.getRoleAbbr(i);
+                    for (String fid : fids) {
+                        JsonObject cellJson = new JsonObject();
+                        cellJson.put("genome_id", genomeId);
+                        cellJson.put("variant_code", variantCode);
+                        cellJson.put("role_name", role);
+                        cellJson.put("role_abbr", abbr);
+                        cellJson.put("patric_id", fid);
+                        cellJson.put("cell_idx", i);
+                        outJson.add(cellJson);
+                    }
+                }
+            }
+        }
+        this.writeJson(outJson, outDir, "subsystem_cell.json");
     }
 
     /**
