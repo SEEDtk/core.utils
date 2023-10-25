@@ -122,6 +122,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
         // Loop through the subsystems, reading them in and then writing them out.
         int subCount = 0;
         int skipCount = 0;
+        int subWritten = 0;
         for (File subDir : this.subDirs) {
             subCount++;
             String subId = subDir.getName();
@@ -132,25 +133,32 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
                 skipCount++;
                 log.info("Skipping {}: output directory already exists.");
             } else {
-                // Read in the subsystem.
-                CoreSubsystem subsystem = new CoreSubsystem(subDir, this.roleMap);
-                // Verify that we want to write it.
-                if (! this.allFlag && ! subsystem.isGood()) {
-                    skipCount++;
-                    log.info("Skipping experimental subsystem {}.", subName);
-                } else {
-                    if (! outDir.isDirectory()) {
-                        // Insure the output directory exists.
-                        log.info("Creating output directory {}.", outDir);
-                        FileUtils.forceMkdir(outDir);
+                try {
+                    // Read in the subsystem.
+                    CoreSubsystem subsystem = new CoreSubsystem(subDir, this.roleMap);
+                    // Verify that we want to write it.
+                    if (! this.allFlag && ! subsystem.isGood()) {
+                        skipCount++;
+                        log.info("Skipping experimental subsystem {}.", subName);
+                    } else {
+                        if (! outDir.isDirectory()) {
+                            // Insure the output directory exists.
+                            log.info("Creating output directory {}.", outDir);
+                            FileUtils.forceMkdir(outDir);
+                        }
+                        this.writeSubsystemFile(outDir, subsystem);
+                        this.writeVariantFile(outDir, subsystem);
+                        this.writeSpreadsheetFile(outDir, subsystem);
+                        subWritten++;
                     }
-                    this.writeSubsystemFile(outDir, subsystem);
-                    this.writeVariantFile(outDir, subsystem);
-                    this.writeSpreadsheetFile(outDir, subsystem);
+                } catch (ParseFailureException e) {
+                    log.error("Parsing error in {}. Subsystem skipped.", subDir.getName());
+                    log.info(e.toString());
+                    skipCount++;
                 }
             }
         }
-        log.info("{} directories written, {} skipped.", subCount, skipCount);
+        log.info("{} directories written, {} skipped.", subWritten, skipCount);
     }
 
     /**
