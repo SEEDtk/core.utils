@@ -32,8 +32,8 @@ import com.github.cliftonlabs.json_simple.Jsoner;
 /**
  * This command dumps all the CoreSEED subsystems into JSON list files in output directories created
  * one per subsystem.  Each output directory will have as its name the subsystem ID.  In the directory
- * there will be a file "subsystem.json" describing the subsystem, a file "subsystem_cell.json" describing
- * each role/feature relationship, and a file  "variants.json" describing the variants.
+ * there will be a file "subsystem.json" describing the subsystem, a file "rows.json" describing
+ * the subsystem rows, and a file  "variants.json" describing the variants.
  *
  * The positional parameters should be the name of the input CoreSEED subsystem directory and the name of
  * the appropriate role definition file.  The subsystems will be in the subdirectories of the input
@@ -195,11 +195,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             JsonObject variantJson = new JsonObject();
             variantJson.put("variant_code", variantCode);
             // Compute the code type here.
-            String type = "inactive";
-            if (VariantId.isLikely(variantCode))
-                type = "likely";
-            else if (VariantId.isActive(variantCode))
-                type = "active";
+            String type = computeActiveLevel(variantCode);
             variantJson.put("variant_type", type);
             // Add a rule if we have one.
             SubsystemRule vRule = subsystem.getRule(variantCode);
@@ -219,6 +215,19 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     }
 
     /**
+     * @param variantCode
+     * @return
+     */
+    private String computeActiveLevel(String variantCode) {
+        String type = "inactive";
+        if (VariantId.isLikely(variantCode))
+            type = "likely";
+        else if (VariantId.isActive(variantCode))
+            type = "active";
+        return type;
+    }
+
+    /**
      * This method writes a file containing the spreadsheet cell data.
      *
      * @param outDir		output directory name
@@ -228,8 +237,9 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
      * @throws IOException
      */
     private void writeSpreadsheetFile(File outDir, CoreSubsystem subsystem) throws IOException, JsonException {
-        // Each record in this file represents a feature / subsystem connection.
-        // We find this data in the rows.
+        // Save the subsystem name.
+        String subName = subsystem.getName();
+        // Each record in this file represents a subsystem row.
         JsonArray outJson = new JsonArray();
         var iter = subsystem.rowIterator();
         while (iter.hasNext()) {
@@ -237,28 +247,29 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             // Save the genome ID and variant code.
             String genomeId = row.getGenomeId();
             String variantCode = row.getVariantCode();
-            // Loop through the columns.
+            JsonObject rowJson = new JsonObject();
+            rowJson.put("genome_id", genomeId);
+            rowJson.put("variant_code", variantCode);
+            String vType = this.computeActiveLevel(variantCode);
+            rowJson.put("variant_type", vType);
+            rowJson.put("is_active", VariantId.isActive(variantCode));
+            rowJson.put("subsystem_name", subName);
+            // Loop through the columns.  We will create a list of the roles present.
             List<Set<String>> columns = row.getColumns();
-            for (int i = 0; i < columns.size(); i++) {
+            final int nCols = columns.size();
+            JsonArray roles = new JsonArray();
+            for (int i = 0; i < nCols; i++) {
                 Set<String> fids = columns.get(i);
                 if (! fids.isEmpty()) {
                     // Get the role data.
                     String role = subsystem.getRole(i);
-                    String abbr = subsystem.getRoleAbbr(i);
-                    for (String fid : fids) {
-                        JsonObject cellJson = new JsonObject();
-                        cellJson.put("genome_id", genomeId);
-                        cellJson.put("variant_code", variantCode);
-                        cellJson.put("role_name", role);
-                        cellJson.put("role_abbr", abbr);
-                        cellJson.put("patric_id", fid);
-                        cellJson.put("cell_idx", i);
-                        outJson.add(cellJson);
-                    }
+                    roles.add(role);
                 }
             }
+            rowJson.put("roles", roles);
+            outJson.add(rowJson);
         }
-        this.writeJson(outJson, outDir, "subsystem_cell.json");
+        this.writeJson(outJson, outDir, "rows.json");
     }
 
     /**
