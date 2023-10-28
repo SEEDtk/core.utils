@@ -17,6 +17,8 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.genome.core.OrganismDirectories;
+import org.theseed.io.MarkerFile;
 import org.theseed.proteins.RoleMap;
 import org.theseed.subsystems.VariantId;
 import org.theseed.subsystems.core.CoreSubsystem;
@@ -35,7 +37,7 @@ import com.github.cliftonlabs.json_simple.Jsoner;
  * there will be a file "subsystem.json" describing the subsystem, a file "rows.json" describing
  * the subsystem rows, and a file  "variants.json" describing the variants.
  *
- * The positional parameters should be the name of the input CoreSEED subsystem directory and the name of
+ * The positional parameters should be the name of the input CoreSEED directory and the name of
  * the appropriate role definition file.  The subsystems will be in the subdirectories of the input
  * directory.  The command-line options are the following:
  *
@@ -47,6 +49,7 @@ import com.github.cliftonlabs.json_simple.Jsoner;
  * --clear		erase the output directory before processing
  * --all		output experimental subsystems in addition to normal ones
  * --missing	if specified, output directories that already exist will be skipped
+ * --genomes	if specified, the name of a file in which to write a directory of genome IDs and names
  *
  */
 public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
@@ -58,6 +61,8 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     private File[] subDirs;
     /** role definition map */
     private RoleMap roleMap;
+    /** organism directory */
+    private File orgDir;
     /** file filter for listing subsystems */
     private static final FileFilter SUB_FILTER = new FileFilter() {
 
@@ -83,9 +88,13 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     @Option(name = "--all", usage = "if specified, experimental subsystems will be output as well as normal ones")
     private boolean allFlag;
 
-    /** input CoreSEED subsystem directory */
-    @Argument(index = 0, metaVar = "inSubsDir", usage = "input CoreSEED subsystem directory", required = true)
-    private File inSubsDir;
+    /** if specified, the name of a file in which to write a list of genome IDs and names */
+    @Option(name = "--genomes", usage = "if specified, an output file to contain the genome IDs and names")
+    private File genomeFile;
+
+    /** input CoreSEED directory */
+    @Argument(index = 0, metaVar = "FIGdisk/Data", usage = "input CoreSEED directory", required = true)
+    private File coreDir;
 
     /** role definition file */
     @Argument(index = 1, metaVar = "roles.in.subsystems", usage = "role definition file", required = true)
@@ -100,18 +109,25 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     protected void setMultiReportDefaults() {
         this.allFlag = false;
         this.missingFlag = false;
+        this.genomeFile = null;
     }
 
     @Override
     protected void validateMultiReportParms() throws IOException, ParseFailureException {
         // Verify the input directory.
-        if (! this.inSubsDir.isDirectory())
-            throw new FileNotFoundException("Input directory " + this.inSubsDir + " is not found or invalid.");
+        if (! this.coreDir.isDirectory())
+            throw new FileNotFoundException("Input directory " + this.coreDir + " is not found or invalid.");
+        File inSubsDir = new File(this.coreDir, "Subsystems");
+        if (! inSubsDir.isDirectory())
+            throw new FileNotFoundException("Subsystem directory " + inSubsDir + " is not found or invalid.");
+        this.orgDir = new File(this.coreDir, "Organisms");
+        if (! this.orgDir.isDirectory())
+            throw new FileNotFoundException("Organism directory " + this.orgDir + " is not found or invalid.");
         // List the subsystems.
-        this.subDirs = this.inSubsDir.listFiles(SUB_FILTER);
+        this.subDirs = inSubsDir.listFiles(SUB_FILTER);
         log.info("{} subsystem directories found.", this.subDirs.length);
         if (this.subDirs.length == 0)
-            throw new FileNotFoundException("No public subsystems found in " + this.inSubsDir + ".");
+            throw new FileNotFoundException("No public subsystems found in " + inSubsDir + ".");
         // Read in the role map.
         this.roleMap = RoleMap.load(this.roleFile);
         log.info("{} role definitions loaded from {}.", this.roleMap.size(), this.roleFile);
@@ -119,6 +135,9 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
 
     @Override
     protected void runMultiReports() throws Exception {
+        // Check for the genome report.
+        if (this.genomeFile != null)
+            this.writeGenomeFile();
         // Loop through the subsystems, reading them in and then writing them out.
         int subCount = 0;
         int skipCount = 0;
@@ -159,6 +178,28 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             }
         }
         log.info("{} directories written, {} skipped.", subWritten, skipCount);
+    }
+
+    /**
+     * Write a report listing the ID and name of each genome in the CoreSEED.
+     *
+     * @throws IOException
+     */
+    private void writeGenomeFile() throws IOException {
+        log.info("Writing genome directory to {}.", this.genomeFile);
+        OrganismDirectories coreGenomes = new OrganismDirectories(this.orgDir);
+        try (PrintWriter outStream = new PrintWriter(this.genomeFile)) {
+            outStream.println("genome_id\tgenome_name");
+            int count = 0;
+            // Loop through the genomes.
+            for (String genomeId : coreGenomes) {
+                File gDir = coreGenomes.getDir(genomeId);
+                String gName = MarkerFile.read(new File(gDir, "GENOME"));
+                outStream.println(genomeId + "\t" + gName);
+                count++;
+            }
+            log.info("{} genome ID/name combinations written to {}.", count, this.genomeFile);
+        }
     }
 
     /**
@@ -215,13 +256,16 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     }
 
     /**
-     * @param variantCode
-     * @return
+     * @return the activity level of a variant code
+     *
+     * @param variantCode	variant code of interest
      */
     private String computeActiveLevel(String variantCode) {
         String type = "inactive";
         if (VariantId.isLikely(variantCode))
             type = "likely";
+        else if (VariantId.isDirty(variantCode))
+            type = "dirty";
         else if (VariantId.isActive(variantCode))
             type = "active";
         return type;
@@ -253,6 +297,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             String vType = this.computeActiveLevel(variantCode);
             rowJson.put("variant_type", vType);
             rowJson.put("is_active", VariantId.isActive(variantCode));
+            rowJson.put("is_clean", ! VariantId.isDirty(variantCode));
             rowJson.put("subsystem_name", subName);
             // Loop through the columns.  We will create a list of the roles present.
             List<Set<String>> columns = row.getColumns();
