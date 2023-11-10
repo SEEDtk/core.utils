@@ -2,8 +2,8 @@ package org.theseed.core.utils;
 
 import java.util.Arrays;
 
+import org.theseed.basic.BaseProcessor;
 import org.theseed.proj.utils.PomCheckProcessor;
-import org.theseed.utils.BaseProcessor;
 
 /**
  * This module contains commands for maintaining CoreSEED.  The following commands are supported.

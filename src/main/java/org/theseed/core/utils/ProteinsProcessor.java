@@ -17,11 +17,11 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
 import org.theseed.counters.CountMap;
 import org.theseed.proteins.Function;
 import org.theseed.proteins.FunctionFilter;
 import org.theseed.proteins.FunctionMap;
-import org.theseed.utils.BaseProcessor;
 import org.theseed.proteins.ProteinFinder;
 
 /**

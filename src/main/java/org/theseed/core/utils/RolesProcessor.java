@@ -24,6 +24,7 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.Genome;
@@ -33,7 +34,6 @@ import org.theseed.proteins.Role;
 import org.theseed.proteins.RoleMap;
 import org.theseed.subsystems.SubsystemData;
 import org.theseed.subsystems.SubsystemFilter;
-import org.theseed.utils.BaseProcessor;
 
 /**
  * This command produces the files required for evaluation and role mapping.  First, it isolates the subsystem

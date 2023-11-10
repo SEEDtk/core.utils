@@ -9,8 +9,8 @@ import java.io.IOException;
 import java.util.Map;
 
 import org.kohsuke.args4j.Argument;
+import org.theseed.basic.BaseProcessor;
 import org.theseed.genome.FeatureSearch;
-import org.theseed.utils.BaseProcessor;
 
 /**
  * This command searches for features containing a specific search expression.  The positional parameters are the name of the

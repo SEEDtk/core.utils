@@ -13,8 +13,8 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
 import org.theseed.genome.coupling.RoleCouplingMap;
-import org.theseed.utils.BaseProcessor;
 
 /**
  * This command compresses a role-coupling data file into a more compact form that can be used by the coupling web site.

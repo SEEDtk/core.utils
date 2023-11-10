@@ -15,6 +15,7 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.CoreUtilities;
 import org.theseed.io.TabbedLineReader;
@@ -22,7 +23,6 @@ import org.theseed.proteins.Role;
 import org.theseed.proteins.RoleMap;
 import org.theseed.subsystems.core.CoreSubsystem;
 import org.theseed.utils.BasePipeProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This sub-command processes the bad-variants report from "SubsystemRuleCheckProcessor" and looks for

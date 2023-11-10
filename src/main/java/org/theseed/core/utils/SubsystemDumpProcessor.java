@@ -17,6 +17,7 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.genome.core.OrganismDirectories;
 import org.theseed.io.MarkerFile;
 import org.theseed.proteins.RoleMap;
@@ -24,7 +25,6 @@ import org.theseed.subsystems.VariantId;
 import org.theseed.subsystems.core.CoreSubsystem;
 import org.theseed.subsystems.core.SubsystemRule;
 import org.theseed.utils.BaseMultiReportProcessor;
-import org.theseed.utils.ParseFailureException;
 
 import com.github.cliftonlabs.json_simple.JsonArray;
 import com.github.cliftonlabs.json_simple.JsonException;

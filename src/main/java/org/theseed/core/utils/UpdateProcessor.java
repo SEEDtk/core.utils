@@ -15,12 +15,12 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
 import org.theseed.genome.coupling.CouplesProcessor;
 import org.theseed.genome.coupling.PrepareProcessor;
 import org.theseed.genome.download.CoreProcessor;
 import org.theseed.genome.download.SeedProcessor;
 import org.theseed.genome.download.SubsystemProcessor;
-import org.theseed.utils.BaseProcessor;
 import org.theseed.web.subsystems.SurveyProcessor;
 
 /**

@@ -23,15 +23,15 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.OrganismDirectories;
-import org.theseed.proteins.Function;
+import org.theseed.roles.RoleUtilities;
 import org.theseed.subsystems.ColumnData;
 import org.theseed.subsystems.RowData;
 import org.theseed.subsystems.SubsystemData;
 import org.theseed.subsystems.SubsystemFilter;
-import org.theseed.utils.BaseProcessor;
 
 /**
  * Produce a master list of all the subsystem roles.  For each role, we output the role name, the subsystem name, and the subsystem curator, and
@@ -267,7 +267,7 @@ public class SubsystemListProcessor extends BaseProcessor {
                     }
                     // If this is a compound role, remember it as a compound.
                     if (fidRoles.length > 1)
-                        this.fidFunctions.put(fidFunction.getKey(), Function.commentFree(function));
+                        this.fidFunctions.put(fidFunction.getKey(), RoleUtilities.commentFree(function));
                 }
             }
         }

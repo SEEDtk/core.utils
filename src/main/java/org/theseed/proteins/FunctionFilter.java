@@ -6,6 +6,8 @@ package org.theseed.proteins;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.theseed.roles.RoleUtilities;
+
 /**
  * This is the base class for function filtering.  It is constructed with a function map.  Each call from the client
  * presents a function assignment, and then a function ID is returned, or NULL if the function is being rejected.
@@ -40,7 +42,7 @@ public abstract class FunctionFilter {
     public String checkFunction(String function) {
         String retVal = null;
         if (function != null && ! function.isEmpty())
-            retVal = this.testFunction(Function.commentFree(function), this.funMap);
+            retVal = this.testFunction(RoleUtilities.commentFree(function), this.funMap);
         return retVal;
     }
 

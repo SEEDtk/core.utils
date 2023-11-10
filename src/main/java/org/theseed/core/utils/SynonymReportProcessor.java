@@ -14,13 +14,13 @@ import java.util.stream.Collectors;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.CoreUtilities;
 import org.theseed.proteins.Role;
 import org.theseed.proteins.RoleMap;
 import org.theseed.utils.BaseMultiReportProcessor;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This sub-command scans the CoreSEED directories and accumulates data on how often roles are used.  The

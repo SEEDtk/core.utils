@@ -14,10 +14,10 @@ import org.apache.commons.io.FileUtils;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseProcessor;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.core.templates.TemplateHandler;
 import org.theseed.io.LineReader;
-import org.theseed.utils.BaseProcessor;
-import org.theseed.utils.ParseFailureException;
 
 import java.util.Map;
 import java.util.regex.Matcher;
