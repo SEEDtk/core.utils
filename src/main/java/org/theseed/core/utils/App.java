@@ -24,6 +24,7 @@ import org.theseed.proj.utils.PomCheckProcessor;
  * subRoles		process the bad-variants report and check for role-name mismatches
  * synonyms		produces a report on synonyms in the CoreSEED functions
  * subDump		dump all of the subsystems in CoreSEED into JSON list directories
+ * subFix		fix the row files in subsystem dumps to use a new set of genomes
  */
 public class App
 {
@@ -79,6 +80,9 @@ public class App
             break;
         case "subDump" :
             processor = new SubsystemDumpProcessor();
+            break;
+        case "subFix" :
+            processor = new SubsystemFixProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

@@ -35,12 +35,11 @@ import com.github.cliftonlabs.json_simple.Jsoner;
  * This command dumps all the CoreSEED subsystems into JSON list files in output directories created
  * one per subsystem.  Each output directory will have as its name the subsystem ID.  In the directory
  * there will be a file "subsystem.json" describing the subsystem, a file "rows.json" describing
- * the subsystem rows, and a file  "variants.json" describing the variants.
+ * the subsystem rows, and a file "variants.json" describing the variants.
  *
- * The positional parameters should be the name of the input CoreSEED directory and the name of
+ * The positional parameters should be the name of the input CoreSEED directory, the name of
  * the appropriate role definition file.  The subsystems will be in the subdirectories of the input
  * directory.  The command-line options are the following:
- *
  *
  * -h	display command-line usage
  * -v	display more frequent log messages
@@ -236,7 +235,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             JsonObject variantJson = new JsonObject();
             variantJson.put("variant_code", variantCode);
             // Compute the code type here.
-            String type = computeActiveLevel(variantCode);
+            String type = VariantId.computeActiveLevel(variantCode);
             variantJson.put("variant_type", type);
             // Add a rule if we have one.
             SubsystemRule vRule = subsystem.getRule(variantCode);
@@ -253,22 +252,6 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
         }
         // Write the variant file.
         this.writeJson(outJson, outDir, "variants.json");
-    }
-
-    /**
-     * @return the activity level of a variant code
-     *
-     * @param variantCode	variant code of interest
-     */
-    private String computeActiveLevel(String variantCode) {
-        String type = "inactive";
-        if (VariantId.isLikely(variantCode))
-            type = "likely";
-        else if (VariantId.isDirty(variantCode))
-            type = "dirty";
-        else if (VariantId.isActive(variantCode))
-            type = "active";
-        return type;
     }
 
     /**
@@ -294,7 +277,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             JsonObject rowJson = new JsonObject();
             rowJson.put("genome_id", genomeId);
             rowJson.put("variant_code", variantCode);
-            String vType = this.computeActiveLevel(variantCode);
+            String vType = VariantId.computeActiveLevel(variantCode);
             rowJson.put("variant_type", vType);
             rowJson.put("is_active", VariantId.isActive(variantCode));
             rowJson.put("is_clean", ! VariantId.isDirty(variantCode));
