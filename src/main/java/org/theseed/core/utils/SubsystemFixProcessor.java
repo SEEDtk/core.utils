@@ -19,6 +19,7 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.kohsuke.args4j.Argument;
+import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.basic.BaseProcessor;
@@ -28,6 +29,8 @@ import org.theseed.genome.Genome;
 import org.theseed.genome.GenomeDirectory;
 import org.theseed.genome.SubsystemRow;
 import org.theseed.io.FieldInputStream;
+import org.theseed.proteins.Role;
+import org.theseed.proteins.RoleMap;
 import org.theseed.subsystems.SubsystemIdMap;
 import org.theseed.subsystems.VariantId;
 
@@ -55,6 +58,7 @@ import com.github.cliftonlabs.json_simple.Jsoner;
  *
  * -h	display command-line usage
  * -v	display more frequent log messages
+ * -R	role definition file (default "roles.in.subsystems" in the current directory
  *
  * @author Bruce Parrello
  *
@@ -74,6 +78,8 @@ public class SubsystemFixProcessor extends BaseProcessor {
     private Map<String, Map<String, RowDescriptor>> subRowMap;
     /** map of subsystem IDs to role lists */
     private Map<String, List<String>> subRoleMap;
+    /** role ID map */
+    private RoleMap roleMap;
     /** list of subsystem directory names */
     private File[] subsystemDirs;
     /** input GTO directory source */
@@ -96,6 +102,10 @@ public class SubsystemFixProcessor extends BaseProcessor {
     };
 
     // COMMAND-LINE OPTIONS
+
+    /** role definition file */
+    @Option(name = "--roles", aliases = { "-R" }, metaVar = "roles.in.subsystems", usage = "role definition file for subsystem roles")
+    private File roleFile;
 
     /** genome input directory */
     @Argument(index = 0, metaVar = "gtoDir", usage = "directory of GTOs to process", required = true)
@@ -135,11 +145,16 @@ public class SubsystemFixProcessor extends BaseProcessor {
             for (SubsystemRow.Role binding : subRow.getRoles()) {
                 if (! binding.getFeatures().isEmpty()) {
                     // Here the role is used in the subsystem, so we set its bit.
-                    int roleIdx = roles.indexOf(binding.getName());
-                    if (roleIdx < 0)
+                    Role roleId = SubsystemFixProcessor.this.roleMap.getByName(binding.getName());
+                    if (roleId == null)
                         SubsystemFixProcessor.this.errorCount++;
-                    else
-                        this.roleSet.set(roleIdx);
+                    else {
+                        int roleIdx = roles.indexOf(roleId.getId());
+                        if (roleIdx < 0)
+                            SubsystemFixProcessor.this.errorCount++;
+                        else
+                            this.roleSet.set(roleIdx);
+                    }
                 }
             }
 
@@ -179,7 +194,8 @@ public class SubsystemFixProcessor extends BaseProcessor {
          */
         protected List<String> getRoleSet(String subId) {
             List<String> roles = SubsystemFixProcessor.this.subRoleMap.get(subId);
-            List<String> retVal = this.roleSet.stream().mapToObj(i -> roles.get(i)).collect(Collectors.toList());
+            List<String> retVal = this.roleSet.stream().mapToObj(i -> SubsystemFixProcessor.this.roleMap.getName(roles.get(i)))
+                    .collect(Collectors.toList());
             return retVal;
         }
 
@@ -188,15 +204,22 @@ public class SubsystemFixProcessor extends BaseProcessor {
 
     @Override
     protected void setDefaults() {
+        this.roleFile = new File(System.getProperty("user.dir"), "roles.in.subsystems");
     }
 
     @Override
     protected boolean validateParms() throws IOException, ParseFailureException {
+        // Check the input directory.
         if (! this.gtoDir.isDirectory())
             throw new FileNotFoundException("Input GTO directory " + this.gtoDir + " is not found or invalid.");
         // Check the subsystem directory.
         if (! this.subDir.isDirectory())
             throw new FileNotFoundException("Master subsystem directory " + this.subDir + " is not found or invalid.");
+        // Check the role file.
+        if (! this.roleFile.canRead())
+            throw new FileNotFoundException("Role definition file " + this.roleFile + " is not found or unreadable.");
+        this.roleMap = RoleMap.load(this.roleFile);
+        log.info("{} role definitions found in {}.", this.roleMap.size(), this.roleFile);
         // Connect to the GTO source.
         this.genomes = new GenomeDirectory(this.gtoDir);
         final int nGenomes = this.genomes.size();
@@ -240,7 +263,7 @@ public class SubsystemFixProcessor extends BaseProcessor {
                     // Connect this directory to the ID.
                     this.subDirMap.put(subId, subsystemDir);
                     // Get the roles.
-                    List<String> roles = record.getList(roleIdx);
+                    List<String> roles = this.roleIdList(record.getList(roleIdx));
                     this.subRoleMap.put(subId, roles);
                     subCount++;
                     roleCount += roles.size();
@@ -291,9 +314,9 @@ public class SubsystemFixProcessor extends BaseProcessor {
             Set<String> genomeRoles = new HashSet<String>(genome.getFeatureCount() * 4 / 3 + 1);
             for (Feature peg : genome.getPegs()) {
                 String function = peg.getPegFunction();
-                String[] roles = Feature.rolesOfFunction(function);
-                for (String role : roles)
-                    genomeRoles.add(role);
+                List<Role> roles = Feature.usefulRoles(this.roleMap, function);
+                for (var role : roles)
+                    genomeRoles.add(role.getId());
             }
             log.info("Processing missing subsystems.  {} distinct roles found in {}.", genomeRoles.size(), genome);
             // Next we looop through the subsystems, skipping the ones present.
@@ -327,7 +350,7 @@ public class SubsystemFixProcessor extends BaseProcessor {
             for (var rowEntry : rowMap.entrySet()) {
                 // Get the genome ID and the row descriptor.
                 String genomeId = rowEntry.getKey();
-                RowDescriptor rowDesc= rowEntry.getValue();
+                RowDescriptor rowDesc = rowEntry.getValue();
                 // Build the json entry for this row.
                 JsonObject rowJson = new JsonObject();
                 rowJson.put("genome_id", genomeId);
@@ -339,6 +362,8 @@ public class SubsystemFixProcessor extends BaseProcessor {
                 rowJson.put("is_active", VariantId.isActive(variantCode));
                 rowJson.put("is_clean", ! VariantId.isDirty(variantCode));
                 rowJson.put("subsystem_name", subName);
+                // Store the role names.
+                rowJson.put("roles",  rowDesc.getRoleSet(subId));
                 // Add the row to the output JSON.
                 fileJson.add(rowJson);
                 rowCount++;
@@ -351,6 +376,15 @@ public class SubsystemFixProcessor extends BaseProcessor {
             subCount++;
             log.info("{} of {} subsystems processed.  {} rows output.", subCount, nSubs, rowCount);
         }
+    }
+
+    /**
+     * @return a list of role IDs corresponding to a list of role names
+     *
+     * @param list	list of role names to convert
+     */
+    private List<String> roleIdList(List<String> list) {
+        return list.stream().map(x -> this.roleMap.getByName(x)).filter(x -> x != null).map(x -> x.getId()).collect(Collectors.toList());
     }
 
     /**
