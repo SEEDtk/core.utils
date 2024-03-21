@@ -72,11 +72,6 @@
     </dependency>
     <dependency>
         <groupId>org.theseed</groupId>
-        <artifactId>web.subsystems</artifactId>
-        <version>0.9.0</version>
-    </dependency>
-    <dependency>
-        <groupId>org.theseed</groupId>
         <artifactId>core</artifactId>
         <version>0.0.9</version>
     </dependency>

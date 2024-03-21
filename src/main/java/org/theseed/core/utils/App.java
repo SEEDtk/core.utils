@@ -8,7 +8,6 @@ import org.theseed.proj.utils.PomCheckProcessor;
 /**
  * This module contains commands for maintaining CoreSEED.  The following commands are supported.
  *
- * updates		process weekly updates
  * roles		create the roles.in.subsystems file
  * tables		create the tables required to build the evaluator
  * subList		produce a short subsystem summary report
@@ -38,9 +37,6 @@ public class App
         switch (command) {
         case "compress" :
             processor = new CouplingCompressProcessor();
-            break;
-        case "updates" :
-            processor = new UpdateProcessor();
             break;
         case "roles" :
             processor = new RolesProcessor();
