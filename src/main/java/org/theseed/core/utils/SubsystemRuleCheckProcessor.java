@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -57,7 +59,6 @@ import org.theseed.subsystems.core.CoreSubsystem;
  *
  * --roles		role definition file to use (default is "roles.in.subsystems" in the CoreSEED data directory)
  * --clear		erase the output directory before starting
- * --all		if specified, bad subsystems with valid rules will be checked
  * --filter		if specified, a file of subsystem names; only the named subsystems will be checked
  *
  * In the bad-variant reports, the expected variant is the one in the spreadsheet.  The actual variant is the one predicted
@@ -144,10 +145,6 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     @Option(name = "--clear", usage = "erase the output directory before processing")
     private boolean clearFlag;
 
-    /** if specified, bad subsystems with valid rules will be checked */
-    @Option(name = "--all", usage = "if specified, bad subsystems with valid rules will be checked")
-    private boolean allFlag;
-
     /** if specified, the name of a file containing subsystem names in the first column; only the named subsystems will be checked */
     @Option(name = "--filter", metaVar = "ssNames.tbl", usage = "file of subsystem names to check (tab-separated with headers)")
     private File filterFile;
@@ -164,7 +161,6 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     protected void setDefaults() {
         this.roleFile = null;
         this.clearFlag = false;
-        this.allFlag = false;
         this.filterFile = null;
     }
 
@@ -176,7 +172,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         if (! this.roleFile.canRead())
             throw new FileNotFoundException("Role definition file " + this.roleFile + " is not found or unreadable.");
         this.roleMap = RoleMap.load(roleFile);
-        log.info("{} roles found in definition file.", this.roleFile);
+        log.info("{} roles found in definition file {}.", this.roleMap.size(), this.roleFile);
         // Get the subsystem directory list.  This will also validate the coreSEED input directory.
         log.info("Scanning for subsystems in {}.", coreDir);
         this.subDirs = CoreSubsystem.getSubsystemDirectories(this.coreDir);
@@ -200,6 +196,20 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                 throw new FileNotFoundException("Filter file " + this.filterFile + " is not found or unreadable.");
             this.ssNames = TabbedLineReader.readSet(this.filterFile, "1");
             this.subTotal = this.ssNames.size();
+            // Now we must validate the filter subsystems.
+            Set<String> realSubs = this.subDirs.stream().map(x -> CoreSubsystem.dirToName(x))
+                    .collect(Collectors.toSet());
+            for (String filterSub : this.ssNames) {
+                if (! realSubs.contains(filterSub)) {
+                    log.error("Subsystem \"{}\" not found in subsystem directory.", filterSub);
+                }
+            }
+            // Now create a version of the subsystem directory list that only contains the filtered
+            // ones.
+            List<File> allDirs = this.subDirs;
+            this.subDirs = allDirs.stream().filter(x -> this.ssNames.contains(CoreSubsystem.dirToName(x)))
+                    .collect(Collectors.toList());
+            this.subTotal = this.subDirs.size();
         }
         // Set up the output directory.
         if (! this.outDir.isDirectory()) {
@@ -249,39 +259,40 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             }
             // Now we process the subsystems.
             log.info("Processing subsystems.");
-            int badSystems = 0;
-            int goodSystems = 0;
             this.subCount = 0;
             this.subStart = System.currentTimeMillis();
-            for (File subDir : this.subDirs) {
-                // Compute the subsystem name and check the filter.
-                String subName = CoreSubsystem.dirToName(subDir);
-                if (this.ssNames == null || this.ssNames.contains(subName)) {
-                    CoreSubsystem subsystem = null;
-                    try {
-                        subsystem = new CoreSubsystem(subDir, roleMap);
-                        if (! subsystem.isGood() && ! allFlag) {
-                            log.info("Skipping subsystem {}.", subsystem.getName());
-                            badSystems++;
-                        } else {
-                            goodSystems++;
-                            this.processSubsystem(subsystem);
-                            // Flush all the output streams.
-                            this.writerList.stream().forEach(x -> x.flush());
-                        }
-                    } catch (ParseFailureException e) {
-                        String message = e.getMessage();
-                        log.error("Error in {}: {}", subDir, e.getMessage());
-                        badSystems++;
-                        String name = CoreSubsystem.dirToName(subDir);
-                        this.errorWriter.println(name + "\t" + message);
-                    }
-                }
-            }
-            log.info("{} good subsystems, {} bad subsystems.", goodSystems, badSystems);
+            this.subDirs.parallelStream().forEach(x -> this.analyzeSubsystem(x));
         } finally {
             // Close all the print writers.
             this.writerList.stream().forEach(x -> x.close());
+        }
+    }
+
+    /**
+     * Perform an analysis of the subsystem in the specified directory.
+     *
+     * @param subDir	directory containing the subsystem
+     */
+    private void analyzeSubsystem(File subDir) {
+        CoreSubsystem subsystem = null;
+        try {
+            subsystem = new CoreSubsystem(subDir, roleMap);
+            this.processSubsystem(subsystem);
+            // Flush all the output streams.
+            for (PrintWriter writer : this.writerList) {
+                synchronized (writer) {
+                    writer.flush();
+                }
+            }
+        } catch (ParseFailureException e) {
+            // A parsing error is an expected problem with the rules.
+            String message = e.getMessage();
+            log.error("Error in {}: {}", subDir, e.getMessage());
+            String name = CoreSubsystem.dirToName(subDir);
+            this.errorWriter.println(name + "\t" + message);
+        } catch (IOException e) {
+            // Uncheck IO exceptions so we can stream this method.
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -315,7 +326,9 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         final String goodFlag = subsystem.isGood() ? "Y" : "";
         final int badIdCount = subsystem.getBadIdCount();
         // Loop through the rows, verifying the genome IDs and variant codes.
-        this.subCount++;
+        synchronized (this) {
+            this.subCount++;
+        }
         log.info("Validating subsystem {} of {}: {}.", this.subCount, this.subTotal, subName);
         int badGenomes = 0;
         int activeGenomes = 0;
@@ -340,7 +353,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         String seriousIndicator = "";
         String invalidIndicator = "";
         String mismatchIndicator = "";
-        if (! subsystem.hasRules()) {
+        if (! subsystem.hasRules()) synchronized (this.missingRulesWriter) {
             // Here there are no rules, so none of the variants will match.  List the subsystem.
             this.missingRulesWriter.println(subName + "\t" + subsystem.getVersion() + "\t"
                     + subsystem.getSuperClass() + "\t" + subsystem.getMiddleClass() + "\t" + subsystem.getSubClass()
@@ -387,8 +400,10 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                                 String expectedAnalysis = subsystem.analyzeRule(expected, roleSet);
                                 String actualAnalysis = subsystem.analyzeRule(actual, roleSet);
                                 // Write the detail line.
-                                this.badVariantDetailWriter.println(subName + "\t" + goodFlag + "\t" + genomeId + "\t" + key
-                                        + "\t" + expectedAnalysis + "\t" + actualAnalysis);
+                                synchronized (this.badVariantDetailWriter) {
+                                    this.badVariantDetailWriter.println(subName + "\t" + goodFlag + "\t" + genomeId + "\t" + key
+                                            + "\t" + expectedAnalysis + "\t" + actualAnalysis);
+                                }
                                 serious++;
                             }
                         }
@@ -412,12 +427,14 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                     gCount, badVariants, serious, mismatches);
         }
         // Write the main-report summary line.
-        this.mainWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" +
-                subsystem.getRowGenomes().size() + "\t" + badIdCount + "\t" +
-                subsystem.getBadRoleCount() + "\t" + variantIndicator + "\t" +
-                seriousIndicator + "\t" + invalidIndicator + "\t" + mismatchIndicator + "\t" + badGenomes);
+        synchronized (this.mainWriter) {
+            this.mainWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" +
+                    subsystem.getRowGenomes().size() + "\t" + badIdCount + "\t" +
+                    subsystem.getBadRoleCount() + "\t" + variantIndicator + "\t" +
+                    seriousIndicator + "\t" + invalidIndicator + "\t" + mismatchIndicator + "\t" + badGenomes);
+        }
         // If there are old codes, write a summary to the old-code report.
-        if (! oldCodes.isEmpty()) {
+        if (! oldCodes.isEmpty()) synchronized (this.oldCodeWriter) {
             int totCodeCount = oldCodes.size() + newCodes.size();
             String oldCodeString = StringUtils.join(oldCodes, ", ");
             this.oldCodeWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" + activeGenomes + "\t" + goodFlag
@@ -431,7 +448,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             String badIdString = StringUtils.join(subsystem.getBadIds(), ", ");
             this.badIdWriter.println(subName + "\t" + subsystem.getRoleCount() + "\t" + goodFlag + "\t" + badIdString);
         }
-        if (log.isInfoEnabled()) {
+        if (log.isInfoEnabled()) synchronized (this) {
             int subsLeft = this.subTotal - this.subCount;
             Duration effort = Duration.ofMillis(System.currentTimeMillis() - this.subStart).dividedBy(subCount);
             Duration rem = effort.multipliedBy(subsLeft);
@@ -466,10 +483,13 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
                     // Check for strict matching.
                     if (subsystem.isExactRole(roleId, roleString))
                         strictRoleSet.add(roleId);
-                    else if (! this.mismatchSet.contains(peg)) {
-                        // Here we have a new mismatch for the mismatch report.
-                        this.mismatchSet.contains(peg);
-                        this.mismatchRoleWriter.println(peg + "\t" + roleString + "\t" + subsystem.getExpectedRole(roleId));
+                    else synchronized (this.mismatchRoleWriter) {
+                        if (! this.mismatchSet.contains(peg)) {
+                            // Here we have a new mismatch for the mismatch report.
+                            this.mismatchSet.add(peg);
+                            this.mismatchRoleWriter.println(peg + "\t" + roleString + "\t" +
+                            subsystem.getExpectedRole(roleId));
+                        }
                     }
                 }
             }
@@ -489,10 +509,12 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         String subName = subsystem.getName();
         String goodFlag = (subsystem.isGood() ? "Y" : "");
         int badIdCount = subsystem.getBadIdCount();
-        for (var countEntry : countMap.sortedCounts()) {
-            String key = countEntry.getKey();
-            int count = countEntry.getCount();
-            writer.println(subName + "\t" + goodFlag + "\t" + badIdCount + "\t" + key + "\t" + count);
+        synchronized (writer) {
+            for (var countEntry : countMap.sortedCounts()) {
+                String key = countEntry.getKey();
+                int count = countEntry.getCount();
+                writer.println(subName + "\t" + goodFlag + "\t" + badIdCount + "\t" + key + "\t" + count);
+            }
         }
     }
 

@@ -34,7 +34,6 @@
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/ch/qos/logback/logback-classic/1.3.12/logback-classic-1.3.12.jar"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/ch/qos/logback/logback-core/1.3.12/logback-core-1.3.12.jar"/>
             <fileset dir="${dir.workspace}/git/genome.download/target/classes"/>
-            <fileset dir="${dir.workspace}/git/web.subsystems/target/classes"/>
             <fileset dir="${dir.workspace}/git/brc.parent/kmers.reps/target/classes"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/commons-codec/commons-codec/1.12/commons-codec-1.12.jar"/>
             <zipfileset excludes="META-INF/*.SF" src="${env.HOME}/.m2/repository/net/sf/trove4j/trove4j/3.0.3/trove4j-3.0.3.jar"/>

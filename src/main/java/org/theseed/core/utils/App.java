@@ -24,6 +24,7 @@ import org.theseed.proj.utils.PomCheckProcessor;
  * synonyms		produces a report on synonyms in the CoreSEED functions
  * subDump		dump all of the subsystems in CoreSEED into JSON list directories
  * subFix		fix the row files in subsystem dumps to use a new set of genomes
+ * ssListCheck	validate a list of subsystem names
  */
 public class App
 {
@@ -79,6 +80,9 @@ public class App
             break;
         case "subFix" :
             processor = new SubsystemFixProcessor();
+            break;
+        case "ssListCheck" :
+            processor = new SubsystemListCheckProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);
