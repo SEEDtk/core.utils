@@ -18,8 +18,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
@@ -31,7 +29,6 @@ import org.theseed.basic.ParseFailureException;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.CoreUtilities;
-import org.theseed.io.TabbedLineReader;
 import org.theseed.proteins.RoleMap;
 import org.theseed.subsystems.core.CoreSubsystem;
 
@@ -118,8 +115,6 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     private PrintWriter oldCodeWriter;
     /** list of active print writers */
     private List<PrintWriter> writerList;
-    /** list of subsystem names to check */
-    private Set<String> ssNames;
     /** set of mismatched-role features already found */
     private Set<String> mismatchSet;
     /** number of subsystems processed */
@@ -173,9 +168,6 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             throw new FileNotFoundException("Role definition file " + this.roleFile + " is not found or unreadable.");
         this.roleMap = RoleMap.load(roleFile);
         log.info("{} roles found in definition file {}.", this.roleMap.size(), this.roleFile);
-        // Get the subsystem directory list.  This will also validate the coreSEED input directory.
-        log.info("Scanning for subsystems in {}.", coreDir);
-        this.subDirs = CoreSubsystem.getSubsystemDirectories(this.coreDir);
         // Verify that we have a genome directory.
         File orgDir = new File(this.coreDir, "Organisms");
         if (! orgDir.isDirectory())
@@ -185,32 +177,9 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
         this.nameMap = new HashMap<String, String>(MAP_SIZE);
         this.coreGenomes = new TreeMap<String, Map<String, String>>();
         this.mismatchSet = new HashSet<String>(MAP_SIZE);
-        // Check for a filter file.
-        if (this.filterFile == null) {
-            log.info("No subsystem filtering specified.");
-            this.ssNames = null;
-            this.subTotal = this.subDirs.size();
-        } else {
-            log.info("Filter file {} specified.", this.filterFile);
-            if (! this.filterFile.canRead())
-                throw new FileNotFoundException("Filter file " + this.filterFile + " is not found or unreadable.");
-            this.ssNames = TabbedLineReader.readSet(this.filterFile, "1");
-            this.subTotal = this.ssNames.size();
-            // Now we must validate the filter subsystems.
-            Set<String> realSubs = this.subDirs.stream().map(x -> CoreSubsystem.dirToName(x))
-                    .collect(Collectors.toSet());
-            for (String filterSub : this.ssNames) {
-                if (! realSubs.contains(filterSub)) {
-                    log.error("Subsystem \"{}\" not found in subsystem directory.", filterSub);
-                }
-            }
-            // Now create a version of the subsystem directory list that only contains the filtered
-            // ones.
-            List<File> allDirs = this.subDirs;
-            this.subDirs = allDirs.stream().filter(x -> this.ssNames.contains(CoreSubsystem.dirToName(x)))
-                    .collect(Collectors.toList());
-            this.subTotal = this.subDirs.size();
-        }
+        // Get the subsystem directory list.  This will also validate the coreSEED input directory.
+        this.subDirs = CoreSubsystem.getFilteredSubsystemDirectories(this.coreDir, this.filterFile);
+        this.subTotal = this.subDirs.size();
         // Set up the output directory.
         if (! this.outDir.isDirectory()) {
             log.info("Creating output directory {}.", this.outDir);

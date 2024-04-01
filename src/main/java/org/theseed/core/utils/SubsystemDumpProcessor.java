@@ -4,7 +4,6 @@
 package org.theseed.core.utils;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -46,9 +45,9 @@ import com.github.cliftonlabs.json_simple.Jsoner;
  * -D	output directory name (default "subJson" under the current working directory)
  *
  * --clear		erase the output directory before processing
- * --all		output experimental subsystems in addition to normal ones
  * --missing	if specified, output directories that already exist will be skipped
  * --genomes	if specified, the name of a file in which to write a directory of genome IDs and names
+ * --filter		if specified, the name of a file containing the subsystems to output
  *
  */
 public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
@@ -57,25 +56,11 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(SubsystemDumpProcessor.class);
     /** list of subsystem directories to process */
-    private File[] subDirs;
+    private List<File> subDirs;
     /** role definition map */
     private RoleMap roleMap;
     /** organism directory */
     private File orgDir;
-    /** file filter for listing subsystems */
-    private static final FileFilter SUB_FILTER = new FileFilter() {
-
-        @Override
-        public boolean accept(File pathname) {
-            boolean retVal = false;
-            if (pathname.isDirectory()) {
-                File pubMarker = new File(pathname, "EXCHANGABLE");
-                retVal = pubMarker.isFile();
-            }
-            return retVal;
-        }
-
-    };
 
     // COMMAND-LINE OPTIONS
 
@@ -83,9 +68,9 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     @Option(name = "--missing", usage = "if specified, existing output directories will not be overwritten")
     private boolean missingFlag;
 
-    /** if specified, all subsystems, including experimental ones, will be output */
-    @Option(name = "--all", usage = "if specified, experimental subsystems will be output as well as normal ones")
-    private boolean allFlag;
+    /** if specified, the name of a file containing subsystem names in the first column; only the named subsystems will be checked */
+    @Option(name = "--filter", metaVar = "ssNames.tbl", usage = "file of subsystem names to check (tab-separated with headers)")
+    private File filterFile;
 
     /** if specified, the name of a file in which to write a list of genome IDs and names */
     @Option(name = "--genomes", usage = "if specified, an output file to contain the genome IDs and names")
@@ -106,7 +91,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
 
     @Override
     protected void setMultiReportDefaults() {
-        this.allFlag = false;
+        this.filterFile = null;
         this.missingFlag = false;
         this.genomeFile = null;
     }
@@ -123,9 +108,9 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
         if (! this.orgDir.isDirectory())
             throw new FileNotFoundException("Organism directory " + this.orgDir + " is not found or invalid.");
         // List the subsystems.
-        this.subDirs = inSubsDir.listFiles(SUB_FILTER);
-        log.info("{} subsystem directories found.", this.subDirs.length);
-        if (this.subDirs.length == 0)
+        this.subDirs = CoreSubsystem.getFilteredSubsystemDirectories(this.coreDir, this.filterFile);
+        log.info("{} subsystem directories found.", this.subDirs.size());
+        if (this.subDirs.isEmpty())
             throw new FileNotFoundException("No public subsystems found in " + inSubsDir + ".");
         // Read in the role map.
         this.roleMap = RoleMap.load(this.roleFile);
@@ -145,7 +130,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
             subCount++;
             String subId = subDir.getName();
             String subName = CoreSubsystem.dirToName(subDir);
-            log.info("Processng subsystem {} of {}: {}.", subCount, this.subDirs.length, subName);
+            log.info("Processng subsystem {} of {}: {}.", subCount, this.subDirs.size(), subName);
             File outDir = this.getOutFile(subId);
             if (outDir.isDirectory() && this.missingFlag) {
                 skipCount++;
@@ -155,20 +140,15 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
                     // Read in the subsystem.
                     CoreSubsystem subsystem = new CoreSubsystem(subDir, this.roleMap);
                     // Verify that we want to write it.
-                    if (! this.allFlag && ! subsystem.isGood()) {
-                        skipCount++;
-                        log.info("Skipping experimental subsystem {}.", subName);
-                    } else {
-                        if (! outDir.isDirectory()) {
-                            // Insure the output directory exists.
-                            log.info("Creating output directory {}.", outDir);
-                            FileUtils.forceMkdir(outDir);
-                        }
-                        this.writeSubsystemFile(outDir, subsystem);
-                        this.writeVariantFile(outDir, subsystem);
-                        this.writeSpreadsheetFile(outDir, subsystem);
-                        subWritten++;
+                    if (! outDir.isDirectory()) {
+                        // Insure the output directory exists.
+                        log.info("Creating output directory {}.", outDir);
+                        FileUtils.forceMkdir(outDir);
                     }
+                    this.writeSubsystemFile(outDir, subsystem);
+                    this.writeVariantFile(outDir, subsystem);
+                    this.writeSpreadsheetFile(outDir, subsystem);
+                    subWritten++;
                 } catch (ParseFailureException e) {
                     log.error("Parsing error in {}. Subsystem skipped.", subDir.getName());
                     log.info(e.toString());
