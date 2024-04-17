@@ -11,6 +11,7 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.BaseReportProcessor;
 import org.theseed.basic.ParseFailureException;
 import org.theseed.genome.Coupling;
 import org.theseed.genome.Feature;
@@ -19,7 +20,6 @@ import org.theseed.genome.Genome;
 import org.theseed.genome.iterator.GenomeSource;
 import org.theseed.proteins.RoleMap;
 import org.theseed.reports.SpecialCouplingReporter;
-import org.theseed.utils.BaseReportProcessor;
 
 /**
  * This command looks for couplings in a genome source that satisfy certain characteristics.  The genomes should include
