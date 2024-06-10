@@ -83,7 +83,7 @@ public class SubsystemListCheckProcessor extends BasePipeProcessor {
         for (var line : inputStream) {
             String inName = line.get(0);
             // If the name ends with a space, change it to an underscore to match the conversion process.
-            if (inName.endsWith("_"))
+            if (inName.endsWith(" "))
                 inName = StringUtils.removeEnd(inName, " ") + "_";
             if (! subNames.contains(inName)) {
                 notFound++;
