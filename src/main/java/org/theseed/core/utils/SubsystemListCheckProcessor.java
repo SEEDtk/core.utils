@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.args4j.Argument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +82,9 @@ public class SubsystemListCheckProcessor extends BasePipeProcessor {
         // Loop through the input.
         for (var line : inputStream) {
             String inName = line.get(0);
+            // If the name ends with a space, change it to an underscore to match the conversion process.
+            if (inName.endsWith("_"))
+                inName = StringUtils.removeEnd(inName, " ") + "_";
             if (! subNames.contains(inName)) {
                 notFound++;
                 writer.println(line.toString());
