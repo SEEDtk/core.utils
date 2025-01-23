@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.theseed.basic.ParseFailureException;
 import org.theseed.genome.core.OrganismDirectories;
 import org.theseed.io.MarkerFile;
-import org.theseed.proteins.RoleMap;
+import org.theseed.subsystems.StrictRoleMap;
 import org.theseed.subsystems.VariantId;
 import org.theseed.subsystems.core.CoreSubsystem;
 import org.theseed.subsystems.core.SubsystemRule;
@@ -58,7 +58,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     /** list of subsystem directories to process */
     private List<File> subDirs;
     /** role definition map */
-    private RoleMap roleMap;
+    private StrictRoleMap roleMap;
     /** organism directory */
     private File orgDir;
 
@@ -81,7 +81,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
     private File coreDir;
 
     /** role definition file */
-    @Argument(index = 1, metaVar = "roles.in.subsystems", usage = "role definition file", required = true)
+    @Argument(index = 1, metaVar = "subsystem.roles", usage = "role definition file", required = true)
     private File roleFile;
 
     @Override
@@ -113,7 +113,7 @@ public class SubsystemDumpProcessor extends BaseMultiReportProcessor {
         if (this.subDirs.isEmpty())
             throw new FileNotFoundException("No public subsystems found in " + inSubsDir + ".");
         // Read in the role map.
-        this.roleMap = RoleMap.load(this.roleFile);
+        this.roleMap = StrictRoleMap.load(this.roleFile);
         log.info("{} role definitions loaded from {}.", this.roleMap.size(), this.roleFile);
     }
 

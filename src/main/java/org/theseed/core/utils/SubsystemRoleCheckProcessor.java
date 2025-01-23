@@ -19,8 +19,8 @@ import org.theseed.basic.ParseFailureException;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.CoreUtilities;
 import org.theseed.io.TabbedLineReader;
-import org.theseed.proteins.Role;
-import org.theseed.proteins.RoleMap;
+import org.theseed.subsystems.StrictRole;
+import org.theseed.subsystems.StrictRoleMap;
 import org.theseed.subsystems.core.CoreSubsystem;
 import org.theseed.utils.BasePipeProcessor;
 
@@ -48,7 +48,7 @@ import org.theseed.utils.BasePipeProcessor;
  * -i	input bad-variants report (if not STDIN)
  * -o	output role-name report (if not STDOUT)
  *
- * --roles	role definition file (default "roles.in.subsystems" in the main CoreSEED directory)
+ * --roles	role definition file (default "subsystem.roles" in the main CoreSEED directory)
  *
  * @author Bruce Parrello
  *
@@ -59,7 +59,7 @@ public class SubsystemRoleCheckProcessor extends BasePipeProcessor {
     /** logging facility */
     protected static Logger log = LoggerFactory.getLogger(SubsystemRoleCheckProcessor.class);
     /** role definitions */
-    private RoleMap roleMap;
+    private StrictRoleMap roleMap;
     /** current subsystem */
     private CoreSubsystem subsystem;
     /** CoreSEED utilities object */
@@ -115,10 +115,10 @@ public class SubsystemRoleCheckProcessor extends BasePipeProcessor {
         log.info("{} subsystems found in {}.", this.subMap.size(), this.subDir);
         // Read in the role definitions.
         if (this.roleFile == null)
-            this.roleFile = new File(this.coreDir, "roles.in.subsystems");
+            this.roleFile = new File(this.coreDir, "subsystem.roles");
         if (! this.roleFile.canRead())
             throw new FileNotFoundException("Role file " + this.roleFile + " is not found or unreadable.");
-        this.roleMap = RoleMap.load(this.roleFile);
+        this.roleMap = StrictRoleMap.load(this.roleFile);
         log.info("{} role definitions read from {}.", this.roleMap.size(), this.roleFile);
         // Clear the caches.
         this.genomeCache = new HashMap<String, Map<String, String>>(1000);
@@ -166,7 +166,7 @@ public class SubsystemRoleCheckProcessor extends BasePipeProcessor {
                 // Separate the function into roles.
                 String[] gRoleNames = Feature.rolesOfFunction(function);
                 for (String gRoleName : gRoleNames) {
-                    Role gRole = this.roleMap.getByName(gRoleName);
+                    StrictRole gRole = this.roleMap.getByName(gRoleName);
                     // Is this an interesting role?
                     if (gRole != null) {
                         final String roleId = gRole.getId();

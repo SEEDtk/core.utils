@@ -25,7 +25,6 @@ import org.theseed.proj.utils.PomCheckProcessor;
  * subDump		dump all of the subsystems in CoreSEED into JSON list directories
  * subFix		fix the row files in subsystem dumps to use a new set of genomes
  * ssListCheck	validate a list of subsystem names
- * projFix		convert a modern subsystem projector to old-form projection files
  */
 public class App
 {
@@ -84,9 +83,6 @@ public class App
             break;
         case "ssListCheck" :
             processor = new SubsystemListCheckProcessor();
-            break;
-        case "projFix" :
-            processor = new SubsystemProjectorFixProcessor();
             break;
         default:
             throw new RuntimeException("Invalid command " + command);

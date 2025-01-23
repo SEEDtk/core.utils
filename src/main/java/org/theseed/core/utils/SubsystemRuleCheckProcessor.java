@@ -29,7 +29,7 @@ import org.theseed.basic.ParseFailureException;
 import org.theseed.counters.CountMap;
 import org.theseed.genome.Feature;
 import org.theseed.genome.core.CoreUtilities;
-import org.theseed.proteins.RoleMap;
+import org.theseed.subsystems.StrictRoleMap;
 import org.theseed.subsystems.core.CoreSubsystem;
 
 /**
@@ -88,7 +88,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     /** map of genome IDs to function maps */
     private Map<String, Map<String, String>> coreGenomes;
     /** master role map */
-    private RoleMap roleMap;
+    private StrictRoleMap roleMap;
     /** list of subsystem directories */
     private List<File> subDirs;
     /** mape of genome IDs to names */
@@ -133,7 +133,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     // COMMAND-LINE OPTIONS
 
     /** role definition file */
-    @Option(name = "--roles", metaVar = "roles.in.subsystems", usage = "role definition file")
+    @Option(name = "--roles", metaVar = "subsystem.roles", usage = "role definition file")
     private File roleFile;
 
     /** if specified, the output directory will be erased before processing */
@@ -166,7 +166,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
             this.roleFile = new File(this.coreDir, "roles.in.subsystems");
         if (! this.roleFile.canRead())
             throw new FileNotFoundException("Role definition file " + this.roleFile + " is not found or unreadable.");
-        this.roleMap = RoleMap.load(roleFile);
+        this.roleMap = StrictRoleMap.load(roleFile);
         log.info("{} roles found in definition file {}.", this.roleMap.size(), this.roleFile);
         // Verify that we have a genome directory.
         File orgDir = new File(this.coreDir, "Organisms");
