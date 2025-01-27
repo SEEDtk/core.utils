@@ -54,7 +54,7 @@ import org.theseed.subsystems.core.CoreSubsystem;
  * -h	display command-line usage
  * -v	display more frequent log messages
  *
- * --roles		role definition file to use (default is "roles.in.subsystems" in the CoreSEED data directory)
+ * --roles		role definition file to use (default is "subsystem.roles" in the CoreSEED data directory)
  * --clear		erase the output directory before starting
  * --filter		if specified, a file of subsystem names; only the named subsystems will be checked
  *
@@ -163,7 +163,7 @@ public class SubsystemRuleCheckProcessor extends BaseProcessor {
     protected boolean validateParms() throws IOException, ParseFailureException {
         // Read in the role map.
         if (this.roleFile == null)
-            this.roleFile = new File(this.coreDir, "roles.in.subsystems");
+            this.roleFile = new File(this.coreDir, "subsystem.roles");
         if (! this.roleFile.canRead())
             throw new FileNotFoundException("Role definition file " + this.roleFile + " is not found or unreadable.");
         this.roleMap = StrictRoleMap.load(roleFile);

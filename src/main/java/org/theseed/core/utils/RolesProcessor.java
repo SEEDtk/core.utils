@@ -30,35 +30,45 @@ import org.theseed.genome.Feature;
 import org.theseed.genome.Genome;
 import org.theseed.genome.GenomeDirectory;
 import org.theseed.io.LineReader;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.proteins.Role;
 import org.theseed.proteins.RoleMap;
-import org.theseed.subsystems.SubsystemData;
-import org.theseed.subsystems.SubsystemFilter;
 
 /**
  * This command produces the files required for evaluation and role mapping.  First, it isolates the subsystem
- * roles from the CoreSEED and assigns them abbreviations.  The existing file (if any) can be used to insure
- * the abbreviations remain consistent.  Then the genomes in the GTOcouple directory are processed to produce
+ * roles from the CoreSEED and assigns them abbreviations.  The existing "subsystem.roles" file (if any) can be used
+ * to insure the abbreviations remain consistent.  Then the genomes in the GTOcouple directory are processed to produce
  * a table of feature-to-role mappings (training.tbl) and a table of useful roles (roles.to.use).
  *
  * The command reads files from an existing evaluation directory and then writes them to a new evaluation
  * directory.  The following files are processed.
  *
  * 	parms.prm				copied unchanged
- * 	roles.in.subsystems		read and rebuilt
+ * 	roles.in.subsystems		rebuilt
  * 	training.tbl			rebuilt
  * 	labels.txt				rebuilt
  * 	roles.to.use			rebuilt
  * 	questionables.tbl		copied unchanged
  *  roles.init.tbl			copied unchanged
  *
- * The questionables.tbl file contains genome IDs in the first column.  Genomes will only be processed into raw.table
+ * The questionables.tbl file contains genome IDs in the first column.  Genomes will only be processed into training.tbl
  * if (1) their ID is not in questionables.tbl, (2) they have at least 300,000 base pairs in the contigs, and (3) they
  * are prokaryotic.  Roles will be put into roles.to.use only if (1) they occur in at least one active subsystem and
  * (2) they are found in 100 or more eligible genomes.  Some of these cutoffs are configurable.
  *
+ * The "roles.init.tbl" file contains role IDs that must remain consistent. This includes all the roles that are
+ * aliases (and is the only way to get aliases into the role map), as well as the venerable PhenTrnaSyntAlph that
+ * is used as the key role for many validation and sampling procedures.
+ *
  * If a role in the subsystems has a new name that hashes to the same checksum as an existing role, the new name
  * will override it.  This insures we have the latest role text for each role ID.
+ *
+ * The first positional parameter is the name of the CoreSEED directory. This should be the safety copy created
+ * by the CoreSEED backup process. That directory will contain the all-important "subsystem.roles" files used
+ * to prime the role map. The "subsystem.roles" file is a strict role map that assigns a different ID to different
+ * text without consideration for aliases or punctuation difference. That ID scheme makes sense for subsystem
+ * projection but not evaluation. The first task we will perform, then, is to convert this file into an
+ * evaluation-style roles.in.subsystems role map.
  *
  * The positional parameters are the name of the CoreSEED directory, the name of the GTO directory, the name of the old
  * evaluation directory, and the name of the new evaluation directory.  The command-line options are as follows.
@@ -89,8 +99,8 @@ public class RolesProcessor extends BaseProcessor {
     private Set<String> usefulRoles;
     /** set of IDs of bad genomes */
     private Set<String> badGenomes;
-    /** coreSEED subsystem directory */
-    private File subsysDir;
+    /** coreSEED subsystem ro;es file */
+    private File oldRoles;
     /** set of acceptable genome domains */
     private Set<String> domains;
     /** core genome directory */
@@ -130,7 +140,7 @@ public class RolesProcessor extends BaseProcessor {
     private File coreDir;
 
     /** GTO input directory */
-    @Argument(index = 1, metaVar = "GTOcouple", usage = "GTO input directory", required = true)
+    @Argument(index = 1, metaVar = "CoreSEED/Gtos", usage = "GTO input directory", required = true)
     private File gtoDir;
 
     /** input directory */
@@ -176,15 +186,23 @@ public class RolesProcessor extends BaseProcessor {
         // Insure the coreSEED directory exists.
         if (! this.coreDir.isDirectory())
             throw new FileNotFoundException("CoreSEED directory " + this.coreDir + " not found or invalid.");
-        // Verify it has a subsystem directory.
-        this.subsysDir = new File(this.coreDir, "Subsystems");
-        if (! this.subsysDir.isDirectory())
-            throw new FileNotFoundException(this.coreDir + " subsystem directory not found or invalid.");
+        // Verify it has a subsystem roles file.
+        this.oldRoles = new File(this.coreDir, "subsystem.roles");
+        if (! oldRoles.canRead())
+            throw new FileNotFoundException("Old role file " + this.oldRoles + " not found or unreadable.");
         // Get its genome directory.
         if (! this.gtoDir.isDirectory())
             throw new FileNotFoundException("GTO directory " + this.gtoDir + " not found or invalid.");
         this.genomes = new GenomeDirectory(this.gtoDir);
         log.info("{} GTOs found in directory.", this.genomes.size());
+        // Initialize the useful-role list.
+        this.usefulRoles = new HashSet<String>(15000);
+        // Initialize the good-domain set.
+        this.domains = new HashSet<String>(Arrays.asList(StringUtils.split(this.domainString, ',')));
+        // Finally, initialize the role-genome counts.
+        this.roleCounts = new CountMap<String>();
+        this.genomeRoleCounts = new HashMap<String, CountMap<String>>(1000);
+        this.roleFoundCounts = new HashMap<String, int[]>(10000);
         return true;
     }
 
@@ -200,10 +218,6 @@ public class RolesProcessor extends BaseProcessor {
         // Read in the list of questionable genomes.
         this.badGenomes = LineReader.readSet(qFile);
         log.info("{} questionable genomes in list.", this.badGenomes.size());
-        // Initialize the useful-role list.
-        this.usefulRoles = new HashSet<String>(15000);
-        // Initialize the good-domain set.
-        this.domains = new HashSet<String>(Arrays.asList(StringUtils.split(this.domainString, ',')));
         // Create the label file.
         log.info("Creating label file in {}.", this.outDir);
         try (PrintWriter labelWriter = new PrintWriter(new File(this.outDir, "labels.txt"))) {
@@ -211,49 +225,40 @@ public class RolesProcessor extends BaseProcessor {
                 labelWriter.format("%d%n", i);
             labelWriter.flush();
         }
-        // Load the old role map.
-        File oldRoles = new File(this.inDir, "roles.in.subsystems");
-        if (oldRoles.exists()) {
-            this.roleMap = RoleMap.load(oldRoles);
-            log.info("{} roles and aliases loaded from old file {}.", this.roleMap.fullSize(), oldRoles);
-        } else {
-            this.roleMap = new RoleMap();
-            log.info("New role map created.");
-        }
-        // Finally, initialize the role-genome counts.
-        this.roleCounts = new CountMap<String>();
-        this.genomeRoleCounts = new HashMap<String, CountMap<String>>(1000);
-        this.roleFoundCounts = new HashMap<String, int[]>(10000);
-        // Get the list of subsystems.
-        File[] subDirs = this.subsysDir.listFiles(new SubsystemFilter());
-        log.info("{} subsystem directories found.", subDirs.length);
-        // Process each subsystem individually.
-        for (File subDir : subDirs) {
-            // Load this subsystem.
-            String ssID = subDir.getName();
-            SubsystemData subsystem = SubsystemData.load(this.coreDir, ssID);
-            // Put the roles in the role map.
-            String[] roleIDs = new String[subsystem.getWidth()];
-            for (int i = 0; i < roleIDs.length; i++) {
-                String function = subsystem.getRole(i);
-                String[] roleNames = Feature.rolesOfFunction(function);
-                for (String roleName : roleNames) {
-                    // Only process non-hypotheticals.
-                    if (! roleName.contentEquals("hypothetical protein")) {
-                        // Get this role's ID.
-                        Role role = this.roleMap.findOrInsert(roleName);
-                        // Insure the role name is up to date.
-                        role.updateName(roleName);
-                        // Mark it as provisionally useful.
-                        this.usefulRoles.add(role.getId());
-                    }
+        // Here we build the role map. We start with the role initialization file.
+        this.roleMap = RoleMap.load(iFile);
+        log.info("Role map initialized with {} roles from {}.", this.roleMap.size(), iFile);
+        // All of these initial roles are considered potentially useful.
+        for (String roleId : this.roleMap.keySet())
+            this.usefulRoles.add(roleId);
+        // Open the old role file.
+        try (TabbedLineReader roleStream = new TabbedLineReader(this.oldRoles, 3)) {
+            // Read the each role definition. Most of the time it will be new and we will
+            // store it with the ID presented. If it is a synonym, however, we let the
+            // existing ID stand and move on. Each role ID kept will be stored as a
+            // provisionally-useful role.
+            int inCount = 0;
+            int newCount = 0;
+            for (var line : roleStream) {
+                String roleName = line.get(2);
+                inCount++;
+                Role oldRole = this.roleMap.getByName(roleName);
+                if (oldRole == null) {
+                    // Here we have a new role. Store it with the ID presented and mark it
+                    // as potentially useful.
+                    String roleId = line.get(0);
+                    Role newRole = new Role(roleId, roleName);
+                    this.roleMap.register(newRole);
+                    newCount++;
+                    this.usefulRoles.add(roleId);
                 }
             }
+            log.info("{} roles read from {}. {} added to role map for a total of {} potentially useful roles.",
+                    inCount, this.oldRoles, newCount, this.usefulRoles.size());
         }
         // Now write the role map.
         File outFile = new File(this.outDir, "roles.in.subsystems");
-        log.info("Saving roles to {}. {} IDs computed for {} roles, of which {} are in the current subsystems.",
-                outFile, this.roleMap.size(), this.roleMap.fullSize(), this.usefulRoles);
+        log.info("Saving roles to {}. {} IDs computed for {} roles.", outFile, this.roleMap.size(), this.roleMap.fullSize());
         this.roleMap.save(outFile);
         // The next step is to count the number of times each role occurs in a useful genome.
         log.info("Searching for roles in genomes.");
