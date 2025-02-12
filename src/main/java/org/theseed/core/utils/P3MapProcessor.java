@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.theseed.p3api.Criterion;
+import org.theseed.p3api.KeyBuffer;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
@@ -131,7 +132,7 @@ public class P3MapProcessor extends BaseReportProcessor {
                 // We will stash the genome found in here.
                 JsonObject found = null;
                 // Look for a trivial case.
-                Optional<JsonObject> exactMatch = p3GenomeData.stream().filter(x -> P3Connection.getString(x, "genome_id").contentEquals(genomeId))
+                Optional<JsonObject> exactMatch = p3GenomeData.stream().filter(x -> KeyBuffer.getString(x, "genome_id").contentEquals(genomeId))
                         .findFirst();
                 if (exactMatch.isPresent()) {
                     found = exactMatch.get();
@@ -145,7 +146,7 @@ public class P3MapProcessor extends BaseReportProcessor {
                     while (p3iter.hasNext() && found == null) {
                         candidateCount++;
                         var p3GenomeDatum = p3iter.next();
-                        String candidateId = P3Connection.getString(p3GenomeDatum, "genome_id");
+                        String candidateId = KeyBuffer.getString(p3GenomeDatum, "genome_id");
                         candCount++;
                         log.info("Checking candidate #{} of {} ({}) against {}.", candCount, candTotal, candidateId, genome);
                         // Note we only need the contigs here, not any structure data.
@@ -157,8 +158,8 @@ public class P3MapProcessor extends BaseReportProcessor {
                 }
                 // If we found a match, save it!
                 if (found != null) {
-                    foundId = P3Connection.getString(found, "genome_id");
-                    foundName = P3Connection.getString(found, "genome_name");
+                    foundId = KeyBuffer.getString(found, "genome_id");
+                    foundName = KeyBuffer.getString(found, "genome_name");
                 } else
                     noMatchCount++;
             }
